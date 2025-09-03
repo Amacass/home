@@ -1,0 +1,81 @@
+{
+  "name": "Story Stage Farming",
+  "description": "ストーリーステージ素材周回スクリプト",
+  "iteration_delay": 5,
+  "steps": [
+    {
+      "action": "wait_for_image",
+      "params": {
+        "template_path": "templates/story_button.png",
+        "timeout": 10
+      },
+      "delay": 1
+    },
+    {
+      "action": "tap_image",
+      "params": {
+        "template_path": "templates/story_button.png"
+      },
+      "delay": 2
+    },
+    {
+      "action": "tap_image",
+      "params": {
+        "template_path": "templates/target_stage.png"
+      },
+      "delay": 2
+    },
+    {
+      "action": "tap_image",
+      "params": {
+        "template_path": "templates/challenge_button.png"
+      },
+      "delay": 1
+    },
+    {
+      "action": "wait_for_image",
+      "params": {
+        "template_path": "templates/auto_battle_button.png",
+        "timeout": 10
+      },
+      "delay": 1
+    },
+    {
+      "action": "tap_image",
+      "params": {
+        "template_path": "templates/auto_battle_button.png"
+      },
+      "delay": 1
+    },
+    {
+      "action": "tap_image",
+      "params": {
+        "template_path": "templates/start_battle_button.png"
+      },
+      "delay": 3
+    },
+    {
+      "action": "wait_for_image",
+      "params": {
+        "template_path": "templates/battle_result.png",
+        "timeout": 180
+      },
+      "delay": 1
+    },
+    {
+      "action": "tap",
+      "params": {
+        "x": 540,
+        "y": 960
+      },
+      "delay": 2
+    },
+    {
+      "action": "tap_image",
+      "params": {
+        "template_path": "templates/retry_button.png"
+      },
+      "delay": 3
+    }
+  ]
+}

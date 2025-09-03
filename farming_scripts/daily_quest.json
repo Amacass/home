@@ -1,0 +1,66 @@
+{
+  "name": "Daily Quest Farming",
+  "description": "デイリークエスト自動周回スクリプト",
+  "iteration_delay": 3,
+  "steps": [
+    {
+      "action": "wait_for_image",
+      "params": {
+        "template_path": "templates/quest_button.png",
+        "timeout": 10
+      },
+      "delay": 1
+    },
+    {
+      "action": "tap_image",
+      "params": {
+        "template_path": "templates/quest_button.png"
+      },
+      "delay": 2
+    },
+    {
+      "action": "wait_for_image",
+      "params": {
+        "template_path": "templates/daily_quest_tab.png",
+        "timeout": 10
+      },
+      "delay": 1
+    },
+    {
+      "action": "tap_image",
+      "params": {
+        "template_path": "templates/daily_quest_tab.png"
+      },
+      "delay": 2
+    },
+    {
+      "action": "tap_image",
+      "params": {
+        "template_path": "templates/start_battle_button.png"
+      },
+      "delay": 3
+    },
+    {
+      "action": "wait_for_image",
+      "params": {
+        "template_path": "templates/battle_complete.png",
+        "timeout": 120
+      },
+      "delay": 1
+    },
+    {
+      "action": "tap_image",
+      "params": {
+        "template_path": "templates/next_button.png"
+      },
+      "delay": 2
+    },
+    {
+      "action": "tap_image",
+      "params": {
+        "template_path": "templates/close_button.png"
+      },
+      "delay": 2
+    }
+  ]
+}
