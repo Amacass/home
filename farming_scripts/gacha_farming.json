@@ -1,0 +1,59 @@
+{
+  "name": "Gacha Farming",
+  "description": "ガチャ石集め用周回スクリプト",
+  "iteration_delay": 2,
+  "steps": [
+    {
+      "action": "wait_for_image",
+      "params": {
+        "template_path": "templates/home_button.png",
+        "timeout": 10
+      },
+      "delay": 1
+    },
+    {
+      "action": "tap_image",
+      "params": {
+        "template_path": "templates/event_button.png"
+      },
+      "delay": 2
+    },
+    {
+      "action": "tap_image",
+      "params": {
+        "template_path": "templates/easy_stage.png"
+      },
+      "delay": 2
+    },
+    {
+      "action": "tap_image",
+      "params": {
+        "template_path": "templates/auto_repeat_button.png"
+      },
+      "delay": 1
+    },
+    {
+      "action": "tap_image",
+      "params": {
+        "template_path": "templates/confirm_button.png"
+      },
+      "delay": 3
+    },
+    {
+      "action": "wait_for_image",
+      "params": {
+        "template_path": "templates/quest_complete.png",
+        "timeout": 300
+      },
+      "delay": 1
+    },
+    {
+      "action": "tap",
+      "params": {
+        "x": 540,
+        "y": 960
+      },
+      "delay": 2
+    }
+  ]
+}

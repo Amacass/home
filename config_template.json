@@ -1,0 +1,37 @@
+{
+  "emulator_settings": {
+    "default_device": "emulator-5554",
+    "screenshot_format": "png",
+    "screenshot_quality": 100,
+    "default_tap_duration": 100,
+    "default_swipe_duration": 500
+  },
+  "image_recognition": {
+    "default_threshold": 0.8,
+    "max_search_attempts": 3,
+    "search_delay": 1.0
+  },
+  "farming_settings": {
+    "default_iterations": 10,
+    "iteration_delay": 5,
+    "error_retry_attempts": 3,
+    "error_retry_delay": 10
+  },
+  "game_specific": {
+    "resolution": {
+      "width": 1080,
+      "height": 1920
+    },
+    "ui_elements": {
+      "quest_button": {"x": 540, "y": 1600},
+      "battle_button": {"x": 540, "y": 1400},
+      "close_button": {"x": 960, "y": 200}
+    }
+  },
+  "safety": {
+    "max_continuous_runtime": 7200,
+    "break_interval": 3600,
+    "break_duration": 300,
+    "random_delay_range": [0.5, 2.0]
+  }
+}
