@@ -15,6 +15,8 @@ final class AudioAnalyzer {
         var level: Float = 0    // perceptual loudness (Stevens power law)
         var beat: Float = 0     // onset strength via spectral flux (0 = none)
         var centroid: Float = 0.5 // normalized spectral centroid (timbral brightness)
+        var bpm: Float = 0      // estimated tempo (0 = unknown yet)
+        var trackChange: Bool = false // one-shot: silence gap -> new track
     }
 
     var sampleRate: Double = 48_000
@@ -43,6 +45,16 @@ final class AudioAnalyzer {
     private var fluxMean: Float = 0
     private var fluxDev: Float = 0
 
+    // Tempo estimation: autocorrelation of the onset-strength (flux) envelope.
+    private var fluxHistory: [Float] = []
+    private var hopDuration: Float = 0.021 // EMA of seconds per analysis hop
+    private var analysesSinceTempo = 0
+    private var bpmSmoothed: Float = 0
+
+    // Track-change detection: a silence gap followed by sound again.
+    private var silentDuration: Float = 0
+    private var hasPlayed = false
+
     init() {
         log2n = vDSP_Length(log2(Float(fftSize)))
         fftSetup = vDSP_create_fftsetup(log2n, FFTRadix(kFFTRadix2))!
@@ -63,6 +75,10 @@ final class AudioAnalyzer {
     func append(samples: [Float]) {
         guard !samples.isEmpty else { return }
 
+        // Track the real hop duration so autocorrelation lags map to seconds.
+        let hop = Float(samples.count) / Float(sampleRate)
+        hopDuration = hopDuration * 0.95 + hop * 0.05
+
         if samples.count >= fftSize {
             ring = Array(samples.suffix(fftSize))
         } else {
@@ -75,9 +91,10 @@ final class AudioAnalyzer {
 
     func currentFeatures() -> Features {
         lock.lock(); defer { lock.unlock() }
-        var f = features
-        // Beat is a one-shot value; consume it after reading.
+        let f = features
+        // Beat and trackChange are one-shot values; consume them after reading.
         features.beat = 0
+        features.trackChange = false
         return f
     }
 
@@ -122,6 +139,21 @@ final class AudioAnalyzer {
         vDSP_rmsqv(ring, 1, &rms, vDSP_Length(fftSize))
         let gate = smoothstep(0.004, 0.045, rms)
 
+        // Track change: silence of >1s followed by sound again. Reset the
+        // tempo estimate so the new track's BPM is measured fresh.
+        var trackChanged = false
+        if gate < 0.05 {
+            silentDuration += hopDuration
+        } else {
+            if hasPlayed && silentDuration > 1.0 {
+                trackChanged = true
+                bpmSmoothed = 0
+                fluxHistory.removeAll(keepingCapacity: true)
+            }
+            silentDuration = 0
+            hasPlayed = true
+        }
+
         // Perceptual loudness: Stevens' power law (exponent ~0.6 for loudness),
         // so the visuals track how loud the music FEELS, not raw signal power.
         let loudness = gate * pow(clamp01(rms / 0.20), 0.6)
@@ -156,6 +188,17 @@ final class AudioAnalyzer {
             onset = clamp01((flux - threshold) / threshold)
         }
 
+        // Tempo: autocorrelate the recent onset envelope every ~2 seconds.
+        fluxHistory.append(flux)
+        if fluxHistory.count > 600 {
+            fluxHistory.removeFirst(fluxHistory.count - 600)
+        }
+        analysesSinceTempo += 1
+        if analysesSinceTempo >= 96 {
+            analysesSinceTempo = 0
+            if gate > 0.3 { estimateTempo() }
+        }
+
         // Adaptive normalization with slow decay (for relative band *shape*).
         bassMax = max(bassMax * 0.999, bass, 1e-4)
         midMax = max(midMax * 0.999, mid, 1e-4)
@@ -173,8 +216,64 @@ final class AudioAnalyzer {
         features.treble = features.treble * 0.6 + nTreble * 0.4
         features.level = features.level * 0.7 + loudness * 0.3
         features.centroid = features.centroid * 0.8 + centroid * 0.2
+        features.bpm = bpmSmoothed
         if onset > features.beat { features.beat = onset }
+        if trackChanged { features.trackChange = true }
         lock.unlock()
+    }
+
+    /// Tempo estimation: autocorrelation of the onset-strength envelope
+    /// (standard approach, cf. Scheirer 1998 "Tempo and beat analysis of
+    /// acoustic musical signals"). The lag with the strongest self-similarity
+    /// in the 60-200 BPM range is the beat period; octave errors are folded
+    /// into a 70-170 BPM preferred range.
+    private func estimateTempo() {
+        let n = fluxHistory.count
+        guard n >= 250, hopDuration > 1e-4 else { return }
+        let window = Array(fluxHistory.suffix(min(n, 500)))
+        let m = window.count
+
+        var mean: Float = 0
+        vDSP_meanv(window, 1, &mean, vDSP_Length(m))
+        var x = window
+        var negMean = -mean
+        vDSP_vsadd(window, 1, &negMean, &x, 1, vDSP_Length(m))
+
+        var r0: Float = 0
+        vDSP_dotpr(x, 1, x, 1, &r0, vDSP_Length(m))
+        guard r0 > 1e-9 else { return }
+
+        let lagMin = max(2, Int((60.0 / 200.0) / hopDuration))
+        let lagMax = min(m - 10, Int((60.0 / 60.0) / hopDuration))
+        guard lagMax > lagMin else { return }
+
+        var bestLag = 0
+        var bestR: Float = 0
+        x.withUnsafeBufferPointer { buffer in
+            guard let base = buffer.baseAddress else { return }
+            for lag in lagMin...lagMax {
+                var r: Float = 0
+                vDSP_dotpr(base, 1, base + lag, 1, &r, vDSP_Length(m - lag))
+                let normalized = r / r0
+                if normalized > bestR {
+                    bestR = normalized
+                    bestLag = lag
+                }
+            }
+        }
+
+        // Require a clear periodicity; otherwise keep the previous estimate.
+        guard bestR > 0.2, bestLag > 0 else { return }
+
+        var bpm = 60.0 / (Float(bestLag) * hopDuration)
+        while bpm < 70 { bpm *= 2 }
+        while bpm > 170 { bpm /= 2 }
+
+        if bpmSmoothed == 0 || abs(bpm - bpmSmoothed) / bpmSmoothed > 0.12 {
+            bpmSmoothed = bpm
+        } else {
+            bpmSmoothed = bpmSmoothed * 0.8 + bpm * 0.2
+        }
     }
 
     /// Average amplitude across the bins covering [loHz, hiHz].

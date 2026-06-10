@@ -1,14 +1,12 @@
 import Foundation
 import Metal
-import MetalKit
 import simd
 
-/// GPU fluid solver (stable fluids / Stam) that is driven by audio features.
-///
-/// The solver keeps everything on the GPU using ping-pong textures. Each frame
-/// it: applies audio-driven forces, advects velocity, projects the field to be
-/// divergence-free, advects the dye, then renders the dye to the drawable.
-final class FluidRenderer: NSObject, MTKViewDelegate {
+/// GPU fluid solver (stable fluids / Stam 1999) driven by audio features,
+/// with vorticity confinement (Fedkiw et al. 2001) for crisp neon strokes.
+final class FluidScene: VisualScene {
+
+    let name = "ネオン・フルイド"
 
     // MARK: Uniform layouts (mirror the structs in Fluid.metal)
 
@@ -36,15 +34,6 @@ final class FluidRenderer: NSObject, MTKViewDelegate {
         var value: SIMD4<Float>
     }
 
-    // MARK: Ping-pong texture pair
-
-    private final class PingPong {
-        var src: MTLTexture
-        var dst: MTLTexture
-        init(_ a: MTLTexture, _ b: MTLTexture) { src = a; dst = b }
-        func swap() { Swift.swap(&src, &dst) }
-    }
-
     // MARK: Configuration
 
     /// Simulation grid resolution (16:9). Lower this if you want more FPS.
@@ -55,7 +44,6 @@ final class FluidRenderer: NSObject, MTKViewDelegate {
     // MARK: Metal objects
 
     private let device: MTLDevice
-    private let commandQueue: MTLCommandQueue
 
     private let advectPipeline: MTLComputePipelineState
     private let divergencePipeline: MTLComputePipelineState
@@ -66,36 +54,22 @@ final class FluidRenderer: NSObject, MTKViewDelegate {
     private let vorticityPipeline: MTLComputePipelineState
     private let displayPipeline: MTLRenderPipelineState
 
-    private let velocity: PingPong
-    private let dye: PingPong
-    private let pressure: PingPong
+    private let velocity: PingPongTexture
+    private let dye: PingPongTexture
+    private let pressure: PingPongTexture
     private let divergenceTex: MTLTexture
     private let curlTex: MTLTexture
 
-    // MARK: Audio source
-
-    private weak var analyzer: AudioAnalyzer?
-
     // MARK: Animation state
 
-    private var lastTime: CFTimeInterval = CACurrentMediaTime()
     private var phase: Float = 0
     private var beatCooldown: Float = 0
 
     // MARK: Init
 
-    init?(mtkView: MTKView, analyzer: AudioAnalyzer) {
-        guard let device = mtkView.device ?? MTLCreateSystemDefaultDevice(),
-              let queue = device.makeCommandQueue(),
-              let library = device.makeDefaultLibrary() else {
-            return nil
-        }
+    init?(device: MTLDevice, library: MTLLibrary) {
         self.device = device
-        self.commandQueue = queue
-        self.analyzer = analyzer
 
-        // Local copies so texture allocation below never touches `self`
-        // (which is illegal before `super.init()`).
         let width = 640
         let height = 360
         self.simWidth = width
@@ -124,18 +98,16 @@ final class FluidRenderer: NSObject, MTKViewDelegate {
         self.curlPipeline = curl
         self.vorticityPipeline = vorticity
 
-        // Display render pipeline.
+        // Display render pipeline (renders into the offscreen scene target).
         let descriptor = MTLRenderPipelineDescriptor()
         descriptor.vertexFunction = library.makeFunction(name: "displayVertex")
         descriptor.fragmentFunction = library.makeFunction(name: "displayFragment")
-        descriptor.colorAttachments[0].pixelFormat = mtkView.colorPixelFormat
+        descriptor.colorAttachments[0].pixelFormat = .rgba16Float
         guard let display = try? device.makeRenderPipelineState(descriptor: descriptor) else {
             return nil
         }
         self.displayPipeline = display
 
-        // Allocate textures. Uses only locals (`device`, `width`, `height`)
-        // so it can run before `super.init()`.
         func makeTexture(_ format: MTLPixelFormat) -> MTLTexture? {
             let d = MTLTextureDescriptor.texture2DDescriptor(
                 pixelFormat: format, width: width, height: height, mipmapped: false)
@@ -150,39 +122,26 @@ final class FluidRenderer: NSObject, MTKViewDelegate {
               let div = makeTexture(.r16Float), let crl = makeTexture(.r16Float) else {
             return nil
         }
-        self.velocity = PingPong(v0, v1)
-        self.dye = PingPong(d0, d1)
-        self.pressure = PingPong(p0, p1)
+        self.velocity = PingPongTexture(v0, v1)
+        self.dye = PingPongTexture(d0, d1)
+        self.pressure = PingPongTexture(p0, p1)
         self.divergenceTex = div
         self.curlTex = crl
-
-        super.init()
     }
 
-    // MARK: MTKViewDelegate
+    // MARK: VisualScene
 
-    func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {}
-
-    func draw(in view: MTKView) {
-        let now = CACurrentMediaTime()
-        var dt = Float(now - lastTime)
-        lastTime = now
-        // Clamp dt so a stalled frame doesn't blow up the simulation.
-        dt = min(max(dt, 1.0 / 240.0), 1.0 / 30.0)
-
-        let features = analyzer?.currentFeatures() ?? AudioAnalyzer.Features()
-
-        guard let commandBuffer = commandQueue.makeCommandBuffer() else { return }
-
+    func render(commandBuffer: MTLCommandBuffer, target: MTLTexture,
+                features: AudioAnalyzer.Features, dt: Float, time: Float) {
         applyAudioForces(commandBuffer, features: features, dt: dt)
         step(commandBuffer, dt: dt, level: features.level)
 
-        if let drawable = view.currentDrawable,
-           let passDescriptor = view.currentRenderPassDescriptor {
-            renderDye(commandBuffer, passDescriptor: passDescriptor)
-            commandBuffer.present(drawable)
-        }
-        commandBuffer.commit()
+        let passDescriptor = MTLRenderPassDescriptor()
+        passDescriptor.colorAttachments[0].texture = target
+        passDescriptor.colorAttachments[0].loadAction = .clear
+        passDescriptor.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
+        passDescriptor.colorAttachments[0].storeAction = .store
+        renderDye(commandBuffer, passDescriptor: passDescriptor)
     }
 
     // MARK: Simulation step
@@ -213,7 +172,7 @@ final class FluidRenderer: NSObject, MTKViewDelegate {
                   texel: texel, dt: dt, dissipation: dyeDissipation)
     }
 
-    private func runAdvect(_ commandBuffer: MTLCommandBuffer, source: PingPong,
+    private func runAdvect(_ commandBuffer: MTLCommandBuffer, source: PingPongTexture,
                            velocity velocityTex: MTLTexture, texel: SIMD2<Float>,
                            dt: Float, dissipation: Float) {
         guard let encoder = commandBuffer.makeComputeCommandEncoder() else { return }
@@ -389,7 +348,7 @@ final class FluidRenderer: NSObject, MTKViewDelegate {
         }
     }
 
-    private func splat(_ commandBuffer: MTLCommandBuffer, target: PingPong,
+    private func splat(_ commandBuffer: MTLCommandBuffer, target: PingPongTexture,
                        point: SIMD2<Float>, radius: Float, value: SIMD4<Float>, aspect: Float) {
         guard let encoder = commandBuffer.makeComputeCommandEncoder() else { return }
         encoder.setComputePipelineState(splatPipeline)

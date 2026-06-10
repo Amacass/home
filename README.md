@@ -47,30 +47,61 @@ Xcode で実行（⌘R）するだけです。
 
 ---
 
+## シーンと自動切り替え
+
+「一日中つけっぱなしでも飽きない」ために、複数のビジュアルシーンを持ち、
+音楽の節目で自動的にクロスフェード切り替えします。
+
+**シーン一覧**（`VisualEngine` に登録、追加も容易）:
+- **ネオン・フルイド** — GPU流体の中をネオンペンキが流れる
+- **パーティクル・フロー** — カールノイズの流れ場を漂う6万の発光粒子と残光
+- **スペクトラム・リング** — BPMに同期して脈打つ同心リング（低音=内側）
+
+**切り替えトリガー**（`VisualEngine.updateDirector`）:
+- 曲の切り替わり（1秒以上の無音ギャップを検出）
+- BPMの大きな変化（±20以上 — DJミックスや曲中の展開）
+- 同じシーンが5分続いたら自動ローテーション
+- UIの「シーン」ボタンで手動切り替え
+
+**BPM推定**はオンセット包絡（スペクトラルフラックス）の自己相関
+（cf. Scheirer 1998）。推定値はUIに表示され、リングシーンの脈動にも使われます。
+
 ## 構成
 
 ```
 project.yml                         # XcodeGen プロジェクト定義
 FluidWave/
 ├── App.swift                       # @main / アプリ状態(AppModel)
-├── ContentView.swift               # UI（開始/停止・ステータス）
+├── ContentView.swift               # UI（開始/停止・シーン切替・BPM表示）
 ├── Audio/
 │   ├── AudioCaptureManager.swift   # ScreenCaptureKit でシステム音声を取得
-│   └── AudioAnalyzer.swift         # vDSP FFT → 帯域 + ビート検出
+│   └── AudioAnalyzer.swift         # FFT→帯域/重心、オンセット、BPM、曲変わり検出
 ├── Render/
 │   ├── MetalFluidView.swift        # MTKView の SwiftUI ラッパー
-│   ├── FluidRenderer.swift         # 流体ソルバ + 音→力のマッピング
-│   └── Shaders/Fluid.metal         # 移流/発散/圧力/勾配/splat/表示
+│   ├── VisualEngine.swift          # シーン管理・自動切替・クロスフェード
+│   ├── Scenes/
+│   │   ├── VisualScene.swift       # シーン共通プロトコル
+│   │   ├── FluidScene.swift        # 流体シーン
+│   │   ├── ParticleScene.swift     # パーティクルシーン
+│   │   └── RingsScene.swift        # リングシーン
+│   └── Shaders/
+│       ├── Fluid.metal             # 流体カーネル + ネオン合成
+│       ├── Particles.metal         # 粒子更新/描画/残光
+│       ├── Rings.metal             # リング（全手続き的）
+│       └── Composite.metal         # シーン間クロスフェード
 └── Resources/Info.plist
 ```
+
+> ⚠️ ファイル構成が変わったら `xcodegen generate` の再実行が必要です。
 
 ---
 
 ## 調整したいとき
 
-- **見た目の激しさ**: `FluidRenderer.applyAudioForces` の `strength` / `radius` / ビート閾値
-- **色**: `FluidRenderer.spectrumColor`
-- **解像度・なめらかさ**: `FluidRenderer` の `simWidth` / `simHeight` / `pressureIterations`
+- **見た目の激しさ**: `FluidScene.applyAudioForces` の force 係数 / `radius`
+- **色**: 各シェーダーの `paintLow` / `paintMid` / `paintHigh`（全シーン共通パレット）
+- **解像度・なめらかさ**: `FluidScene` の `simWidth` / `simHeight` / `pressureIterations`
+- **シーン切替の頻度**: `VisualEngine` の `maxSceneAge`（既定300秒）等
 - **反応の機敏さ**: `AudioAnalyzer.analyze` のスムージング係数とビート判定 (`* 1.45`)
 
 ## 音→光マッピングの根拠（参考文献）

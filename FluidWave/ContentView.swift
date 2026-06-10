@@ -6,7 +6,7 @@ struct ContentView: View {
 
     var body: some View {
         ZStack(alignment: .bottom) {
-            MetalFluidView(analyzer: model.analyzer)
+            MetalFluidView(engine: model.engine)
                 .ignoresSafeArea()
                 .onTapGesture { withAnimation { showControls.toggle() } }
 
@@ -29,11 +29,22 @@ struct ContentView: View {
             }
             .buttonStyle(.borderedProminent)
 
+            Button {
+                model.engine.requestNextScene()
+            } label: {
+                Label("シーン", systemImage: "arrow.triangle.2.circlepath")
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 10)
+            }
+            .buttonStyle(.bordered)
+
+            EngineStatusView(engine: model.engine)
+
             Text(statusText)
                 .font(.callout)
                 .foregroundStyle(.white.opacity(0.85))
                 .lineLimit(2)
-                .frame(maxWidth: 420, alignment: .leading)
+                .frame(maxWidth: 360, alignment: .leading)
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 12)
@@ -66,5 +77,22 @@ struct ContentView: View {
         } else {
             model.capture.start()
         }
+    }
+}
+
+/// Live scene name + estimated BPM (observes the engine directly).
+private struct EngineStatusView: View {
+    @ObservedObject var engine: VisualEngine
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(engine.sceneName)
+                .font(.headline)
+                .foregroundStyle(.white)
+            Text(engine.bpmText)
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(.white.opacity(0.7))
+        }
+        .frame(minWidth: 130, alignment: .leading)
     }
 }
