@@ -1,0 +1,28 @@
+name: FluidWave
+options:
+  bundleIdPrefix: com.fluidwave
+  deploymentTarget:
+    macOS: "13.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+targets:
+  FluidWave:
+    type: application
+    platform: macOS
+    sources:
+      - path: FluidWave
+    settings:
+      base:
+        INFOPLIST_FILE: FluidWave/Resources/Info.plist
+        PRODUCT_BUNDLE_IDENTIFIER: com.fluidwave.app
+        PRODUCT_NAME: FluidWave
+        CODE_SIGN_ENTITLEMENTS: FluidWave/FluidWave.entitlements
+        CODE_SIGN_STYLE: Automatic
+        ENABLE_HARDENED_RUNTIME: YES
+        COMBINE_HIDPI_IMAGES: YES
+        GENERATE_INFOPLIST_FILE: NO
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: ""

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!--
+      App Sandbox is left OFF for local development so ScreenCaptureKit can
+      capture system audio without extra configuration. If you later want to
+      distribute this app, enable the sandbox and add the appropriate
+      screen-capture / audio entitlements.
+    -->
+</dict>
+</plist>
