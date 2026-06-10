@@ -1,6 +1,7 @@
 import Foundation
 import ScreenCaptureKit
 import CoreMedia
+import CoreGraphics
 import AVFAudio
 
 /// Captures the Mac's *system* audio (e.g. whatever the Music app is playing)
@@ -33,6 +34,18 @@ final class AudioCaptureManager: NSObject, ObservableObject, SCStreamDelegate, S
 
     func start() {
         guard state == .idle || isFailed else { return }
+
+        // ScreenCaptureKit uses the "Screen Recording" permission to access
+        // system audio. Permission is tied to the binary, and newly granted
+        // permission only takes effect after the app is relaunched — so we
+        // check explicitly and give a clear instruction instead of silently
+        // failing inside SCShareableContent.
+        if !CGPreflightScreenCaptureAccess() {
+            CGRequestScreenCaptureAccess() // triggers the system prompt
+            setState(.failed("「画面収録」を許可してください。許可したあと、このアプリを一度終了(⌘Q)して再起動してください。(システム設定 > プライバシーとセキュリティ > 画面収録)"))
+            return
+        }
+
         setState(.starting)
 
         Task {
