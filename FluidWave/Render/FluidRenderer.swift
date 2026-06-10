@@ -42,9 +42,9 @@ final class FluidRenderer: NSObject, MTKViewDelegate {
     // MARK: Configuration
 
     /// Simulation grid resolution (16:9). Lower this if you want more FPS.
-    private let simWidth = 640
-    private let simHeight = 360
-    private let pressureIterations = 24
+    private let simWidth: Int
+    private let simHeight: Int
+    private let pressureIterations: Int
 
     // MARK: Metal objects
 
@@ -85,6 +85,14 @@ final class FluidRenderer: NSObject, MTKViewDelegate {
         self.commandQueue = queue
         self.analyzer = analyzer
 
+        // Local copies so texture allocation below never touches `self`
+        // (which is illegal before `super.init()`).
+        let width = 640
+        let height = 360
+        self.simWidth = width
+        self.simHeight = height
+        self.pressureIterations = 24
+
         func computePipeline(_ name: String) -> MTLComputePipelineState? {
             guard let fn = library.makeFunction(name: name) else { return nil }
             return try? device.makeComputePipelineState(function: fn)
@@ -113,10 +121,11 @@ final class FluidRenderer: NSObject, MTKViewDelegate {
         }
         self.displayPipeline = display
 
-        // Allocate textures.
+        // Allocate textures. Uses only locals (`device`, `width`, `height`)
+        // so it can run before `super.init()`.
         func makeTexture(_ format: MTLPixelFormat) -> MTLTexture? {
             let d = MTLTextureDescriptor.texture2DDescriptor(
-                pixelFormat: format, width: simWidth, height: simHeight, mipmapped: false)
+                pixelFormat: format, width: width, height: height, mipmapped: false)
             d.usage = [.shaderRead, .shaderWrite]
             d.storageMode = .private
             return device.makeTexture(descriptor: d)
