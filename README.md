@@ -55,6 +55,8 @@ Xcode で実行（⌘R）するだけです。
 **シーン一覧**（`VisualEngine` に登録、追加も容易）:
 - **ネオン・フルイド** — GPU流体の中をネオンペンキが流れる
 - **パーティクル・フロー** — カールノイズの流れ場を漂う6万の発光粒子と残光
+- **ウェーブ・ライン** — 実波形のネオン・オシロスコープ3本（低音=下/平滑、高音=上/精細）
+- **スターフィールド** — 音域色で瞬く3層パララックスの星空。ビートで流れ星
 - **スペクトラム・リング** — BPMに同期して脈打つ同心リング（低音=内側）
 
 **切り替えトリガー**（`VisualEngine.updateDirector`）:
@@ -83,10 +85,14 @@ FluidWave/
 │   │   ├── VisualScene.swift       # シーン共通プロトコル
 │   │   ├── FluidScene.swift        # 流体シーン
 │   │   ├── ParticleScene.swift     # パーティクルシーン
+│   │   ├── WaveScene.swift         # 波形ラインシーン
+│   │   ├── StarScene.swift         # 星空シーン
 │   │   └── RingsScene.swift        # リングシーン
 │   └── Shaders/
 │       ├── Fluid.metal             # 流体カーネル + ネオン合成
 │       ├── Particles.metal         # 粒子更新/描画/残光
+│       ├── Wave.metal              # 波形トレース（距離場グロー）
+│       ├── Stars.metal             # 星空（パララックス/流れ星）
 │       ├── Rings.metal             # リング（全手続き的）
 │       └── Composite.metal         # シーン間クロスフェード
 └── Resources/Info.plist

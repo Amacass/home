@@ -17,7 +17,10 @@ final class AudioAnalyzer {
         var centroid: Float = 0.5 // normalized spectral centroid (timbral brightness)
         var bpm: Float = 0      // estimated tempo (0 = unknown yet)
         var trackChange: Bool = false // one-shot: silence gap -> new track
+        var waveform: [Float] = [] // 256 downsampled time-domain samples
     }
+
+    static let waveformLength = 256
 
     var sampleRate: Double = 48_000
 
@@ -209,6 +212,15 @@ final class AudioAnalyzer {
         let nMid = clamp01(mid / midMax) * gate
         let nTreble = clamp01(treble / trebleMax) * gate
 
+        // Downsampled waveform snapshot for oscilloscope-style scenes,
+        // gated so silence yields a flat line instead of noise.
+        let waveLength = Self.waveformLength
+        var wave = [Float](repeating: 0, count: waveLength)
+        let step = fftSize / waveLength
+        for i in 0..<waveLength {
+            wave[i] = ring[i * step] * gate
+        }
+
         lock.lock()
         // Smooth the continuous bands for fluid (less jittery) motion.
         features.bass = features.bass * 0.6 + nBass * 0.4
@@ -217,6 +229,7 @@ final class AudioAnalyzer {
         features.level = features.level * 0.7 + loudness * 0.3
         features.centroid = features.centroid * 0.8 + centroid * 0.2
         features.bpm = bpmSmoothed
+        features.waveform = wave
         if onset > features.beat { features.beat = onset }
         if trackChanged { features.trackChange = true }
         lock.unlock()

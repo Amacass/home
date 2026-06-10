@@ -77,6 +77,8 @@ final class VisualEngine: NSObject, ObservableObject, MTKViewDelegate {
         if let fluid = FluidScene(device: device, library: library) { roster.append(fluid) }
         if let particles = ParticleScene(device: device, library: library,
                                          width: width, height: height) { roster.append(particles) }
+        if let wave = WaveScene(device: device, library: library) { roster.append(wave) }
+        if let stars = StarScene(device: device, library: library) { roster.append(stars) }
         if let rings = RingsScene(device: device, library: library) { roster.append(rings) }
         guard !roster.isEmpty else { return nil }
         self.scenes = roster
