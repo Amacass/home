@@ -22,6 +22,12 @@ final class FluidRenderer: NSObject, MTKViewDelegate {
         var dissipation: Float
     }
 
+    private struct VorticityUniforms {
+        var texelSize: SIMD2<Float>
+        var dt: Float
+        var strength: Float
+    }
+
     private struct SplatUniforms {
         var texelSize: SIMD2<Float>
         var point: SIMD2<Float>
@@ -56,12 +62,15 @@ final class FluidRenderer: NSObject, MTKViewDelegate {
     private let jacobiPipeline: MTLComputePipelineState
     private let gradientPipeline: MTLComputePipelineState
     private let splatPipeline: MTLComputePipelineState
+    private let curlPipeline: MTLComputePipelineState
+    private let vorticityPipeline: MTLComputePipelineState
     private let displayPipeline: MTLRenderPipelineState
 
     private let velocity: PingPong
     private let dye: PingPong
     private let pressure: PingPong
     private let divergenceTex: MTLTexture
+    private let curlTex: MTLTexture
 
     // MARK: Audio source
 
@@ -102,7 +111,9 @@ final class FluidRenderer: NSObject, MTKViewDelegate {
               let divergence = computePipeline("divergence"),
               let jacobi = computePipeline("jacobi"),
               let gradient = computePipeline("subtractGradient"),
-              let splat = computePipeline("splat") else {
+              let splat = computePipeline("splat"),
+              let curl = computePipeline("curl"),
+              let vorticity = computePipeline("vorticity") else {
             return nil
         }
         self.advectPipeline = advect
@@ -110,6 +121,8 @@ final class FluidRenderer: NSObject, MTKViewDelegate {
         self.jacobiPipeline = jacobi
         self.gradientPipeline = gradient
         self.splatPipeline = splat
+        self.curlPipeline = curl
+        self.vorticityPipeline = vorticity
 
         // Display render pipeline.
         let descriptor = MTLRenderPipelineDescriptor()
@@ -134,13 +147,14 @@ final class FluidRenderer: NSObject, MTKViewDelegate {
         guard let v0 = makeTexture(.rgba16Float), let v1 = makeTexture(.rgba16Float),
               let d0 = makeTexture(.rgba16Float), let d1 = makeTexture(.rgba16Float),
               let p0 = makeTexture(.r16Float), let p1 = makeTexture(.r16Float),
-              let div = makeTexture(.r16Float) else {
+              let div = makeTexture(.r16Float), let crl = makeTexture(.r16Float) else {
             return nil
         }
         self.velocity = PingPong(v0, v1)
         self.dye = PingPong(d0, d1)
         self.pressure = PingPong(p0, p1)
         self.divergenceTex = div
+        self.curlTex = crl
 
         super.init()
     }
@@ -185,6 +199,10 @@ final class FluidRenderer: NSObject, MTKViewDelegate {
         runAdvect(commandBuffer, source: velocity, velocity: velocity.src,
                   texel: texel, dt: dt, dissipation: velocityDissipation)
 
+        // Vorticity confinement keeps swirls crisp (paint-stroke look) instead
+        // of letting numerical diffusion smear everything together.
+        applyVorticity(commandBuffer, texel: texel, dt: dt, strength: 30.0)
+
         // Projection: divergence -> pressure solve -> subtract gradient.
         computeDivergence(commandBuffer, texel: texel)
         solvePressure(commandBuffer, texel: texel)
@@ -208,6 +226,29 @@ final class FluidRenderer: NSObject, MTKViewDelegate {
         dispatch(encoder)
         encoder.endEncoding()
         source.swap()
+    }
+
+    private func applyVorticity(_ commandBuffer: MTLCommandBuffer, texel: SIMD2<Float>,
+                                dt: Float, strength: Float) {
+        guard let curlEncoder = commandBuffer.makeComputeCommandEncoder() else { return }
+        curlEncoder.setComputePipelineState(curlPipeline)
+        curlEncoder.setTexture(velocity.src, index: 0)
+        curlEncoder.setTexture(curlTex, index: 1)
+        var su = SimpleUniforms(texelSize: texel)
+        curlEncoder.setBytes(&su, length: MemoryLayout<SimpleUniforms>.stride, index: 0)
+        dispatch(curlEncoder)
+        curlEncoder.endEncoding()
+
+        guard let encoder = commandBuffer.makeComputeCommandEncoder() else { return }
+        encoder.setComputePipelineState(vorticityPipeline)
+        encoder.setTexture(velocity.src, index: 0)
+        encoder.setTexture(curlTex, index: 1)
+        encoder.setTexture(velocity.dst, index: 2)
+        var vu = VorticityUniforms(texelSize: texel, dt: dt, strength: strength)
+        encoder.setBytes(&vu, length: MemoryLayout<VorticityUniforms>.stride, index: 0)
+        dispatch(encoder)
+        encoder.endEncoding()
+        velocity.swap()
     }
 
     private func computeDivergence(_ commandBuffer: MTLCommandBuffer, texel: SIMD2<Float>) {
@@ -251,6 +292,16 @@ final class FluidRenderer: NSObject, MTKViewDelegate {
 
     // MARK: Audio -> forces
 
+    /// Audio -> visual mapping, grounded in perception research:
+    /// - Pitch -> elevation (Eitan & Granot 2006): bass paints low on screen,
+    ///   treble high, so the layout mirrors how we hear register.
+    /// - Loudness -> force/brightness via Stevens' power law (already applied
+    ///   in AudioAnalyzer), so intensity tracks PERCEIVED volume.
+    /// - Spectral centroid -> motion tempo (timbral brightness, Schubert &
+    ///   Wolfe 2006): bright timbres dart, dark timbres glide.
+    /// - Onsets (spectral flux) -> bursts at the dominant register's stroke.
+    /// Each register injects exactly ONE paint channel (x=bass red, y=mid
+    /// green, z=treble blue); the display shader keeps them from mixing.
     private func applyAudioForces(_ commandBuffer: MTLCommandBuffer,
                                   features: AudioAnalyzer.Features, dt: Float) {
         let level = features.level
@@ -258,66 +309,82 @@ final class FluidRenderer: NSObject, MTKViewDelegate {
         let mid = features.mid
         let treble = features.treble
 
-        // Motion only advances while the music plays. At silence `phase` freezes
-        // and, with no new forces injected, the field simply dissipates.
-        phase += dt * (1.0 + mid * 4.0 + bass * 2.0) * level
+        // Motion only advances while music plays; silence freezes the strokes
+        // and the field just dissipates to black.
+        phase += dt * (0.8 + features.centroid * 2.6) * level
         if beatCooldown > 0 { beatCooldown -= dt }
-
-        // Effectively silent -> inject nothing, let the fluid calm down.
         guard level > 0.02 else { return }
 
         let aspect = Float(simWidth) / Float(simHeight)
-        let center = SIMD2<Float>(0.5, 0.5)
 
-        // Color reflects the live spectral balance, renormalized to full neon
-        // saturation so distinct frequencies read as distinct glowing hues.
-        let spectralColor = neonColor(bass: bass, mid: mid, treble: treble)
-
-        // --- Mids / melody: orbiting light emitters that drive a swirl ---
-        let emitterCount = 3
-        for i in 0..<emitterCount {
-            let base = phase + Float(i) * (2.0 * .pi / Float(emitterCount))
-            let radius: Float = 0.22 + bass * 0.12
-            let point = center + SIMD2<Float>(cos(base) * radius / aspect, sin(base) * radius)
-            let tangent = SIMD2<Float>(-sin(base), cos(base))
-
-            let force = tangent * (mid * 600.0 + bass * 350.0) * level
+        // --- Bass: a wide, slow red stroke sweeping low across the screen ---
+        if bass > 0.04 {
+            let pb = phase * 0.5
+            let point = SIMD2<Float>(0.5 + 0.34 * sin(pb), 0.26 + 0.05 * sin(2 * pb))
+            var tangent = SIMD2<Float>(0.34 * cos(pb), 0.10 * cos(2 * pb))
+            tangent = normalize(tangent + SIMD2<Float>(1e-5, 0))
+            let force = tangent * (1000.0 * bass * level)
             splat(commandBuffer, target: velocity, point: point,
-                  radius: 0.0007, value: SIMD4<Float>(force.x, force.y, 0, 0), aspect: aspect)
-
-            let brightness = (0.15 + mid * 1.3) * level
+                  radius: 0.0016, value: SIMD4<Float>(force.x, force.y, 0, 0), aspect: aspect)
             splat(commandBuffer, target: dye, point: point,
-                  radius: 0.0009, value: SIMD4<Float>(spectralColor * brightness, 1), aspect: aspect)
+                  radius: 0.0014, value: SIMD4<Float>(bass * level * 1.6, 0, 0, 0), aspect: aspect)
         }
 
-        // --- Highs / treble: fast shimmering sparks around the rim ---
-        if treble > 0.25 {
-            let sparkColor = neonColor(bass: 0, mid: 0.15, treble: 1.0)
-            for s in 0..<3 {
-                let a = phase * 5.0 + Float(s) * 2.4
-                let rr: Float = 0.30 + 0.12 * sin(phase * 3.0 + Float(s))
-                let p = center + SIMD2<Float>(cos(a) * rr / aspect, sin(a) * rr)
-                splat(commandBuffer, target: dye, point: p,
-                      radius: 0.00022, value: SIMD4<Float>(sparkColor * treble * 1.2, 1), aspect: aspect)
-            }
+        // --- Mids / melody: a green orbit through the middle register ---
+        if mid > 0.04 {
+            let pm = phase
+            let center = SIMD2<Float>(0.5, 0.50)
+            let point = center + SIMD2<Float>(cos(pm) * 0.20 / aspect, sin(pm) * 0.16)
+            let tangent = normalize(SIMD2<Float>(-sin(pm), cos(pm)))
+            let force = tangent * (750.0 * mid * level)
+            splat(commandBuffer, target: velocity, point: point,
+                  radius: 0.0008, value: SIMD4<Float>(force.x, force.y, 0, 0), aspect: aspect)
+            splat(commandBuffer, target: dye, point: point,
+                  radius: 0.0008, value: SIMD4<Float>(0, mid * level * 1.5, 0, 0), aspect: aspect)
         }
 
-        // --- Beat / bass hit: a bright central pulse + radial shockwave ---
+        // --- Treble: thin, fast blue filaments along the top ---
+        if treble > 0.06 {
+            let pt = phase * 2.4
+            let point = SIMD2<Float>(0.5 + 0.36 * sin(pt), 0.74 + 0.04 * sin(3 * pt))
+            var tangent = SIMD2<Float>(0.36 * cos(pt), 0.12 * cos(3 * pt))
+            tangent = normalize(tangent + SIMD2<Float>(1e-5, 0))
+            let force = tangent * (650.0 * treble * level)
+            splat(commandBuffer, target: velocity, point: point,
+                  radius: 0.0004, value: SIMD4<Float>(force.x, force.y, 0, 0), aspect: aspect)
+            splat(commandBuffer, target: dye, point: point,
+                  radius: 0.0004, value: SIMD4<Float>(0, 0, treble * level * 1.4, 0), aspect: aspect)
+        }
+
+        // --- Onset: burst from the dominant register, in ITS paint ---
         if features.beat > 0.0 && beatCooldown <= 0 {
-            beatCooldown = 0.11
+            beatCooldown = 0.10
             let beat = features.beat
-            let burstColor = neonColor(bass: 1.0, mid: mid, treble: treble * 0.5)
-            splat(commandBuffer, target: dye, point: center,
-                  radius: 0.025, value: SIMD4<Float>(burstColor * (0.7 + beat), 1), aspect: aspect)
+
+            let origin: SIMD2<Float>
+            let paint: SIMD4<Float>
+            if bass >= mid && bass >= treble {
+                origin = SIMD2<Float>(0.5 + 0.34 * sin(phase * 0.5), 0.26)
+                paint = SIMD4<Float>(1.8 * (0.5 + beat), 0, 0, 0)
+            } else if mid >= treble {
+                origin = SIMD2<Float>(0.5, 0.50)
+                paint = SIMD4<Float>(0, 1.8 * (0.5 + beat), 0, 0)
+            } else {
+                origin = SIMD2<Float>(0.5 + 0.36 * sin(phase * 2.4), 0.74)
+                paint = SIMD4<Float>(0, 0, 1.8 * (0.5 + beat), 0)
+            }
+
+            splat(commandBuffer, target: dye, point: origin,
+                  radius: 0.012, value: paint, aspect: aspect)
 
             let rays = 10
             for r in 0..<rays {
                 let a = Float(r) * (2.0 * .pi / Float(rays)) + phase
                 let dir = SIMD2<Float>(cos(a), sin(a))
-                let p = center + dir * 0.05
-                let f = dir * (2200.0 * beat * (0.5 + bass))
+                let p = origin + dir * 0.04
+                let f = dir * (2400.0 * beat * level)
                 splat(commandBuffer, target: velocity, point: p,
-                      radius: 0.004, value: SIMD4<Float>(f.x, f.y, 0, 0), aspect: aspect)
+                      radius: 0.003, value: SIMD4<Float>(f.x, f.y, 0, 0), aspect: aspect)
             }
         }
     }
@@ -335,19 +402,6 @@ final class FluidRenderer: NSObject, MTKViewDelegate {
         dispatch(encoder)
         encoder.endEncoding()
         target.swap()
-    }
-
-    /// Maps the spectral balance to a vivid neon color, renormalized to full
-    /// saturation so colors stay punchy instead of washing out to grey/white.
-    private func neonColor(bass: Float, mid: Float, treble: Float) -> SIMD3<Float> {
-        let bassColor   = SIMD3<Float>(1.00, 0.15, 0.55) // hot magenta
-        let midColor    = SIMD3<Float>(0.20, 1.00, 0.45) // electric green
-        let trebleColor = SIMD3<Float>(0.30, 0.55, 1.00) // electric blue
-        var c = bassColor * bass + midColor * mid + trebleColor * treble
-        let m = max(c.x, max(c.y, c.z))
-        if m < 1e-4 { return SIMD3<Float>(repeating: 0) }
-        c = c / m // full neon saturation
-        return c
     }
 
     // MARK: Display

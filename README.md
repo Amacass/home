@@ -73,6 +73,23 @@ FluidWave/
 - **解像度・なめらかさ**: `FluidRenderer` の `simWidth` / `simHeight` / `pressureIterations`
 - **反応の機敏さ**: `AudioAnalyzer.analyze` のスムージング係数とビート判定 (`* 1.45`)
 
+## 音→光マッピングの根拠（参考文献）
+
+「曲の表現に合わせた光」のマッピングは、以下の研究に基づいて設計しています。
+
+| 表現 | 根拠 |
+|---|---|
+| ビートで光が弾ける | **スペクトラルフラックス**によるオンセット検出。Bello et al. (2005) *A Tutorial on Onset Detection in Music Signals*, IEEE TSAP / Dixon (2006) *Onset Detection Revisited*, DAFx。単純な音量変化でなく「楽音のアタック」に反応 |
+| 音量→力・明るさ | **Stevensのべき法則** (Stevens 1957, *On the psychophysical law*)。人間の音量知覚は物理量の約0.6乗。体感のラウドネスに比例して動く |
+| 低音=画面下 / 高音=画面上 | **音高と垂直方向の共感覚的対応** (Eitan & Granot 2006, *How Music Moves*, Music Perception)。音域レイアウトが聴覚の感覚と一致 |
+| 音色が明るいと動きが速い | **スペクトル重心**は音色の「明るさ」の知覚と相関 (Schubert & Wolfe 2006, Acta Acustica) |
+| 渦がくっきり残る | **Vorticity Confinement** (Fedkiw, Stam & Jensen 2001, *Visual Simulation of Smoke*, SIGGRAPH)。数値拡散で消える渦を復元 |
+| 流体ソルバ本体 | Stam (1999) *Stable Fluids*, SIGGRAPH |
+
+### ネオン表現の仕組み
+
+染料テクスチャはRGB色ではなく「**3種の蛍光ペンキの濃度**」（x=低音・赤 / y=中音・緑 / z=高音・青）を保持。表示時に濃度をべき乗（dominance=3.0）で重み付けし、**局所的に優勢なペンキが色を支配**する合成にすることで、加算混色で白く濁るのを構造的に防いでいます。共通成分の除去＋ピークチャンネルの正規化で常にフル彩度、背景は微小濃度のカットで純黒を維持します。
+
 ## ロードマップ（今後）
 
 今回は「ビジュアルのみ」スコープ。将来的には:
