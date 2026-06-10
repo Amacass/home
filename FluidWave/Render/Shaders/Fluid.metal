@@ -160,10 +160,19 @@ vertex VertexOut displayVertex(uint vid [[vertex_id]])
 fragment float4 displayFragment(VertexOut in [[stage_in]],
                                 texture2d<float, access::sample> dye [[texture(0)]])
 {
-    float3 c = dye.sample(linearSampler, in.uv).rgb;
-    c = max(c, 0.0);
-    // Gentle filmic-ish tone map so bright beats bloom without clipping hard.
-    c = c / (1.0 + c);
-    c = pow(c, float3(1.0 / 1.6)); // mild gamma lift
-    return float4(c, 1.0);
+    float3 c = max(dye.sample(linearSampler, in.uv).rgb, 0.0);
+
+    // Tone-map on luminance (not per-channel) so bright cores bloom while
+    // keeping their hue, instead of washing out to muddy white.
+    float lum = dot(c, float3(0.2126, 0.7152, 0.0722));
+    float mappedLum = lum / (1.0 + lum);
+    float3 toned = c * (mappedLum / max(lum, 1e-4));
+
+    // Push saturation for a neon look.
+    float g = dot(toned, float3(0.2126, 0.7152, 0.0722));
+    toned = mix(float3(g), toned, 1.5);
+
+    // Gentle gamma lift so faint trails still glow.
+    toned = pow(max(toned, 0.0), float3(1.0 / 1.5));
+    return float4(toned, 1.0);
 }

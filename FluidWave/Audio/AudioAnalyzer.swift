@@ -103,20 +103,29 @@ final class AudioAnalyzer {
         let mid = bandEnergy(150, 2_000, binHz: binHz)
         let treble = bandEnergy(2_000, 8_000, binHz: binHz)
 
-        // Adaptive normalization with slow decay.
+        // Absolute loudness gate. The per-band auto-gain below would otherwise
+        // amplify the silent noise floor up to full range, making the visuals
+        // move even with no music playing. This gate is NOT auto-gained, so
+        // true silence -> 0 -> the fluid stops.
+        var rms: Float = 0
+        vDSP_rmsqv(ring, 1, &rms, vDSP_Length(fftSize))
+        let gate = smoothstep(0.004, 0.045, rms)
+
+        // Adaptive normalization with slow decay (for relative band *shape*).
         bassMax = max(bassMax * 0.999, bass, 1e-4)
         midMax = max(midMax * 0.999, mid, 1e-4)
         trebleMax = max(trebleMax * 0.999, treble, 1e-4)
 
-        let nBass = clamp01(bass / bassMax)
-        let nMid = clamp01(mid / midMax)
-        let nTreble = clamp01(treble / trebleMax)
-        let level = clamp01((nBass + nMid + nTreble) / 3.0)
+        // Gate every band so quiet passages and silence genuinely calm down.
+        let nBass = clamp01(bass / bassMax) * gate
+        let nMid = clamp01(mid / midMax) * gate
+        let nTreble = clamp01(treble / trebleMax) * gate
+        let level = gate * clamp01((nBass + nMid + nTreble) / 3.0 + 0.0)
 
-        // Beat: a bass spike well above the running average.
+        // Beat: a bass spike well above the running average (only while audible).
         bassEnergyAvg = bassEnergyAvg * 0.92 + bass * 0.08
         var beat: Float = 0
-        if bass > bassEnergyAvg * 1.45 && nBass > 0.25 {
+        if gate > 0.25 && bass > bassEnergyAvg * 1.45 && nBass > 0.25 {
             beat = clamp01((bass / max(bassEnergyAvg, 1e-5) - 1.45))
         }
 
@@ -141,4 +150,9 @@ final class AudioAnalyzer {
     }
 
     private func clamp01(_ x: Float) -> Float { min(max(x, 0), 1) }
+
+    private func smoothstep(_ edge0: Float, _ edge1: Float, _ x: Float) -> Float {
+        let t = clamp01((x - edge0) / max(edge1 - edge0, 1e-6))
+        return t * t * (3 - 2 * t)
+    }
 }

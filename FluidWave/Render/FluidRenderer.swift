@@ -161,7 +161,7 @@ final class FluidRenderer: NSObject, MTKViewDelegate {
         guard let commandBuffer = commandQueue.makeCommandBuffer() else { return }
 
         applyAudioForces(commandBuffer, features: features, dt: dt)
-        step(commandBuffer, dt: dt)
+        step(commandBuffer, dt: dt, level: features.level)
 
         if let drawable = view.currentDrawable,
            let passDescriptor = view.currentRenderPassDescriptor {
@@ -173,12 +173,17 @@ final class FluidRenderer: NSObject, MTKViewDelegate {
 
     // MARK: Simulation step
 
-    private func step(_ commandBuffer: MTLCommandBuffer, dt: Float) {
+    private func step(_ commandBuffer: MTLCommandBuffer, dt: Float, level: Float) {
         let texel = SIMD2<Float>(1.0 / Float(simWidth), 1.0 / Float(simHeight))
+
+        // Persistence scales with the music: loud -> flowing trails, silent ->
+        // both velocity and dye decay within ~1s so the screen calms and darkens.
+        let velocityDissipation = 0.965 + 0.033 * level
+        let dyeDissipation = 0.94 + 0.045 * level
 
         // Advect velocity by itself.
         runAdvect(commandBuffer, source: velocity, velocity: velocity.src,
-                  texel: texel, dt: dt, dissipation: 0.999)
+                  texel: texel, dt: dt, dissipation: velocityDissipation)
 
         // Projection: divergence -> pressure solve -> subtract gradient.
         computeDivergence(commandBuffer, texel: texel)
@@ -187,7 +192,7 @@ final class FluidRenderer: NSObject, MTKViewDelegate {
 
         // Advect dye by the (now divergence-free) velocity field.
         runAdvect(commandBuffer, source: dye, velocity: velocity.src,
-                  texel: texel, dt: dt, dissipation: 0.994)
+                  texel: texel, dt: dt, dissipation: dyeDissipation)
     }
 
     private func runAdvect(_ commandBuffer: MTLCommandBuffer, source: PingPong,
@@ -248,47 +253,69 @@ final class FluidRenderer: NSObject, MTKViewDelegate {
 
     private func applyAudioForces(_ commandBuffer: MTLCommandBuffer,
                                   features: AudioAnalyzer.Features, dt: Float) {
-        phase += dt * (0.25 + features.mid * 1.5)
+        let level = features.level
+        let bass = features.bass
+        let mid = features.mid
+        let treble = features.treble
+
+        // Motion only advances while the music plays. At silence `phase` freezes
+        // and, with no new forces injected, the field simply dissipates.
+        phase += dt * (1.0 + mid * 4.0 + bass * 2.0) * level
         if beatCooldown > 0 { beatCooldown -= dt }
 
-        let aspect = Float(simWidth) / Float(simHeight)
+        // Effectively silent -> inject nothing, let the fluid calm down.
+        guard level > 0.02 else { return }
 
-        // Three orbiting emitters inject swirling colored dye + tangential force.
+        let aspect = Float(simWidth) / Float(simHeight)
+        let center = SIMD2<Float>(0.5, 0.5)
+
+        // Color reflects the live spectral balance, renormalized to full neon
+        // saturation so distinct frequencies read as distinct glowing hues.
+        let spectralColor = neonColor(bass: bass, mid: mid, treble: treble)
+
+        // --- Mids / melody: orbiting light emitters that drive a swirl ---
         let emitterCount = 3
         for i in 0..<emitterCount {
             let base = phase + Float(i) * (2.0 * .pi / Float(emitterCount))
-            let radius: Float = 0.30
-            let center = SIMD2<Float>(0.5, 0.5)
+            let radius: Float = 0.22 + bass * 0.12
             let point = center + SIMD2<Float>(cos(base) * radius / aspect, sin(base) * radius)
-
-            // Tangential direction for a swirl.
             let tangent = SIMD2<Float>(-sin(base), cos(base))
-            let strength = (40.0 + features.bass * 700.0) * (0.4 + features.level)
-            let force = tangent * strength
 
+            let force = tangent * (mid * 600.0 + bass * 350.0) * level
             splat(commandBuffer, target: velocity, point: point,
-                  radius: 0.0008, value: SIMD4<Float>(force.x, force.y, 0, 0), aspect: aspect)
+                  radius: 0.0007, value: SIMD4<Float>(force.x, force.y, 0, 0), aspect: aspect)
 
-            let color = spectrumColor(hueBase: base, brightness: 0.05 + features.treble * 0.9 + features.level * 0.3)
+            let brightness = (0.15 + mid * 1.3) * level
             splat(commandBuffer, target: dye, point: point,
-                  radius: 0.0010, value: SIMD4<Float>(color, 1), aspect: aspect)
+                  radius: 0.0009, value: SIMD4<Float>(spectralColor * brightness, 1), aspect: aspect)
         }
 
-        // On a beat, fire a bright radial burst from the center.
-        if features.beat > 0.0 && beatCooldown <= 0 {
-            beatCooldown = 0.12
-            let center = SIMD2<Float>(0.5, 0.5)
-            let burstColor = spectrumColor(hueBase: phase * 2.0, brightness: 0.6 + features.beat)
-            splat(commandBuffer, target: dye, point: center,
-                  radius: 0.02, value: SIMD4<Float>(burstColor * (1 + features.beat), 1), aspect: aspect)
+        // --- Highs / treble: fast shimmering sparks around the rim ---
+        if treble > 0.25 {
+            let sparkColor = neonColor(bass: 0, mid: 0.15, treble: 1.0)
+            for s in 0..<3 {
+                let a = phase * 5.0 + Float(s) * 2.4
+                let rr: Float = 0.30 + 0.12 * sin(phase * 3.0 + Float(s))
+                let p = center + SIMD2<Float>(cos(a) * rr / aspect, sin(a) * rr)
+                splat(commandBuffer, target: dye, point: p,
+                      radius: 0.00022, value: SIMD4<Float>(sparkColor * treble * 1.2, 1), aspect: aspect)
+            }
+        }
 
-            // Outward kick in several directions.
-            let rays = 8
+        // --- Beat / bass hit: a bright central pulse + radial shockwave ---
+        if features.beat > 0.0 && beatCooldown <= 0 {
+            beatCooldown = 0.11
+            let beat = features.beat
+            let burstColor = neonColor(bass: 1.0, mid: mid, treble: treble * 0.5)
+            splat(commandBuffer, target: dye, point: center,
+                  radius: 0.025, value: SIMD4<Float>(burstColor * (0.7 + beat), 1), aspect: aspect)
+
+            let rays = 10
             for r in 0..<rays {
-                let a = Float(r) * (2.0 * .pi / Float(rays))
+                let a = Float(r) * (2.0 * .pi / Float(rays)) + phase
                 let dir = SIMD2<Float>(cos(a), sin(a))
-                let p = center + dir * 0.04
-                let f = dir * (2500.0 * features.beat)
+                let p = center + dir * 0.05
+                let f = dir * (2200.0 * beat * (0.5 + bass))
                 splat(commandBuffer, target: velocity, point: p,
                       radius: 0.004, value: SIMD4<Float>(f.x, f.y, 0, 0), aspect: aspect)
             }
@@ -310,12 +337,17 @@ final class FluidRenderer: NSObject, MTKViewDelegate {
         target.swap()
     }
 
-    /// Smooth rainbow color from a hue angle.
-    private func spectrumColor(hueBase: Float, brightness: Float) -> SIMD3<Float> {
-        let r = 0.5 + 0.5 * cos(hueBase)
-        let g = 0.5 + 0.5 * cos(hueBase + 2.094)
-        let b = 0.5 + 0.5 * cos(hueBase + 4.188)
-        return SIMD3<Float>(r, g, b) * max(brightness, 0)
+    /// Maps the spectral balance to a vivid neon color, renormalized to full
+    /// saturation so colors stay punchy instead of washing out to grey/white.
+    private func neonColor(bass: Float, mid: Float, treble: Float) -> SIMD3<Float> {
+        let bassColor   = SIMD3<Float>(1.00, 0.15, 0.55) // hot magenta
+        let midColor    = SIMD3<Float>(0.20, 1.00, 0.45) // electric green
+        let trebleColor = SIMD3<Float>(0.30, 0.55, 1.00) // electric blue
+        var c = bassColor * bass + midColor * mid + trebleColor * treble
+        let m = max(c.x, max(c.y, c.z))
+        if m < 1e-4 { return SIMD3<Float>(repeating: 0) }
+        c = c / m // full neon saturation
+        return c
     }
 
     // MARK: Display
