@@ -1,0 +1,347 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		DA8E4FDD6C52A86BE54AE354 /* EarbudFinderApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84930D936090C9D02C10412E /* EarbudFinderApp.swift */; };
+		DE5396AC69EC8479C2B4D39B /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A90AB022BC3967B9A9D7AF93 /* AppModel.swift */; };
+		DBC5C9B186D7CDFA44EE51CE /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBB8652E7AD2017AA261B9AD /* ContentView.swift */; };
+		A022E0F5E436F7DE4A4A1EF8 /* LocationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 974DD8CA4CD759E831D82E78 /* LocationManager.swift */; };
+		D2462373B9E58E77AD1B7FC7 /* AudioRouteMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2971A5B988539CBECB28DE29 /* AudioRouteMonitor.swift */; };
+		F79B798208517C330FC85A17 /* KeepAliveAudio.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7E49C697B876A4D1209A324 /* KeepAliveAudio.swift */; };
+		6EAFD63B4444DC63E58789A5 /* DisconnectStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 63C8975553C49F58BCB66BDC /* DisconnectStore.swift */; };
+		46624CC56C746BDB244BED15 /* DisconnectEvent.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBBC3DB245569F302D3EBDB2 /* DisconnectEvent.swift */; };
+		ABD2DA8B2FA298AFD4525C6A /* NotificationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 317B4544B19B1DA60C5C8DDA /* NotificationManager.swift */; };
+		CA837FF99D176469646A0DC9 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 7BCA0844791C2576D1B37B98 /* Assets.xcassets */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		BF617EDE2BD55DFA1548F21D /* EarbudFinder.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = EarbudFinder.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		84930D936090C9D02C10412E /* EarbudFinderApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EarbudFinderApp.swift; sourceTree = "<group>"; };
+		A90AB022BC3967B9A9D7AF93 /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
+		BBB8652E7AD2017AA261B9AD /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		974DD8CA4CD759E831D82E78 /* LocationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationManager.swift; sourceTree = "<group>"; };
+		2971A5B988539CBECB28DE29 /* AudioRouteMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioRouteMonitor.swift; sourceTree = "<group>"; };
+		D7E49C697B876A4D1209A324 /* KeepAliveAudio.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeepAliveAudio.swift; sourceTree = "<group>"; };
+		63C8975553C49F58BCB66BDC /* DisconnectStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DisconnectStore.swift; sourceTree = "<group>"; };
+		DBBC3DB245569F302D3EBDB2 /* DisconnectEvent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DisconnectEvent.swift; sourceTree = "<group>"; };
+		317B4544B19B1DA60C5C8DDA /* NotificationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationManager.swift; sourceTree = "<group>"; };
+		7BCA0844791C2576D1B37B98 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		FFC2C122258BEC2FD98220AB /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		1BFC78CCEEF287701C7D134A /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		C4AE2EA37A5657D3D73F6298 = {
+			isa = PBXGroup;
+			children = (
+				6FCDD58A5A19B6643C25128A /* EarbudFinder */,
+				48D8F542617045EA3E224687 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		48D8F542617045EA3E224687 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				BF617EDE2BD55DFA1548F21D /* EarbudFinder.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		6FCDD58A5A19B6643C25128A /* EarbudFinder */ = {
+			isa = PBXGroup;
+			children = (
+				84930D936090C9D02C10412E /* EarbudFinderApp.swift */,
+				A90AB022BC3967B9A9D7AF93 /* AppModel.swift */,
+				BBB8652E7AD2017AA261B9AD /* ContentView.swift */,
+				974DD8CA4CD759E831D82E78 /* LocationManager.swift */,
+				2971A5B988539CBECB28DE29 /* AudioRouteMonitor.swift */,
+				D7E49C697B876A4D1209A324 /* KeepAliveAudio.swift */,
+				63C8975553C49F58BCB66BDC /* DisconnectStore.swift */,
+				DBBC3DB245569F302D3EBDB2 /* DisconnectEvent.swift */,
+				317B4544B19B1DA60C5C8DDA /* NotificationManager.swift */,
+				7BCA0844791C2576D1B37B98 /* Assets.xcassets */,
+				FFC2C122258BEC2FD98220AB /* Info.plist */,
+			);
+			path = EarbudFinder;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		3EF44FB27C44290E33D2B432 /* EarbudFinder */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 3DA0128DACD9649EAB554B17 /* Build configuration list for PBXNativeTarget "EarbudFinder" */;
+			buildPhases = (
+				912475610C9A47EF79839445 /* Sources */,
+				1BFC78CCEEF287701C7D134A /* Frameworks */,
+				D8B4BEBDB6BDAE5DF9F20CCC /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = EarbudFinder;
+			productName = EarbudFinder;
+			productReference = BF617EDE2BD55DFA1548F21D /* EarbudFinder.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		1DAD36CC750F86E94E7B84BB /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1500;
+				LastUpgradeCheck = 1500;
+				TargetAttributes = {
+					3EF44FB27C44290E33D2B432 = {
+						CreatedOnToolsVersion = 15.0;
+					};
+				};
+			};
+			buildConfigurationList = 67E5AFD6162540C69F96A0EA /* Build configuration list for PBXProject "EarbudFinder" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+				ja,
+			);
+			mainGroup = C4AE2EA37A5657D3D73F6298;
+			productRefGroup = 48D8F542617045EA3E224687 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				3EF44FB27C44290E33D2B432 /* EarbudFinder */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		D8B4BEBDB6BDAE5DF9F20CCC /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				CA837FF99D176469646A0DC9 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		912475610C9A47EF79839445 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				DA8E4FDD6C52A86BE54AE354 /* EarbudFinderApp.swift in Sources */,
+				DE5396AC69EC8479C2B4D39B /* AppModel.swift in Sources */,
+				DBC5C9B186D7CDFA44EE51CE /* ContentView.swift in Sources */,
+				A022E0F5E436F7DE4A4A1EF8 /* LocationManager.swift in Sources */,
+				D2462373B9E58E77AD1B7FC7 /* AudioRouteMonitor.swift in Sources */,
+				F79B798208517C330FC85A17 /* KeepAliveAudio.swift in Sources */,
+				6EAFD63B4444DC63E58789A5 /* DisconnectStore.swift in Sources */,
+				46624CC56C746BDB244BED15 /* DisconnectEvent.swift in Sources */,
+				ABD2DA8B2FA298AFD4525C6A /* NotificationManager.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		0B8D3570828A3E6BF89D83A2 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_FAST_MATH = YES;
+				SDKROOT = iphoneos;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_TESTABILITY = YES;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = ("DEBUG=1", "$(inherited)", );
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				ONLY_ACTIVE_ARCH = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		C7CB8FDB3CC532600F14BEC3 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_FAST_MATH = YES;
+				SDKROOT = iphoneos;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+			};
+			name = Release;
+		};
+		07F073630AD020BDE53950BC /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = EarbudFinder/Info.plist;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/Frameworks", );
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.EarbudFinder;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		31F0E0A66B8741425BF3865C /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = EarbudFinder/Info.plist;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/Frameworks", );
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.EarbudFinder;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		67E5AFD6162540C69F96A0EA /* Build configuration list for PBXProject "EarbudFinder" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				0B8D3570828A3E6BF89D83A2 /* Debug */,
+				C7CB8FDB3CC532600F14BEC3 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		3DA0128DACD9649EAB554B17 /* Build configuration list for PBXNativeTarget "EarbudFinder" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				07F073630AD020BDE53950BC /* Debug */,
+				31F0E0A66B8741425BF3865C /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 1DAD36CC750F86E94E7B84BB /* Project object */;
+}
