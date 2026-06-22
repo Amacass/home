@@ -18,6 +18,16 @@ final class DisconnectStore: ObservableObject {
     /// 最新（直近）の切断イベント。
     var latest: DisconnectEvent? { events.first }
 
+    /// 日付（その日の0時）ごとにまとめた切断イベント。新しい日が先頭。
+    /// 各日の中も新しい順。日付ごとに見返せるUI用。
+    var eventsByDay: [(day: Date, events: [DisconnectEvent])] {
+        let calendar = Calendar.current
+        let groups = Dictionary(grouping: events) { calendar.startOfDay(for: $0.date) }
+        return groups
+            .map { (day: $0.key, events: $0.value.sorted { $0.date > $1.date }) }
+            .sorted { $0.day > $1.day }
+    }
+
     func add(_ event: DisconnectEvent) {
         events.insert(event, at: 0)
         save()

@@ -1,5 +1,4 @@
 import SwiftUI
-import MapKit
 import CoreLocation
 
 struct ContentView: View {
@@ -102,17 +101,7 @@ private struct LocationWarning: View {
 private struct LatestDisconnectCard: View {
     let event: DisconnectEvent
     @EnvironmentObject private var model: AppModel
-    @State private var camera: MapCameraPosition
-
-    init(event: DisconnectEvent) {
-        self.event = event
-        _camera = State(initialValue: .region(
-            MKCoordinateRegion(
-                center: event.coordinate,
-                span: MKCoordinateSpan(latitudeDelta: 0.005, longitudeDelta: 0.005)
-            )
-        ))
-    }
+    @State private var showFullMap = false
 
     var body: some View {
         Card {
@@ -121,13 +110,10 @@ private struct LatestDisconnectCard: View {
                     .font(.headline)
 
                 if event.hasValidLocation {
-                    Map(position: $camera) {
-                        Marker(event.deviceName, coordinate: event.coordinate)
-                            .tint(.red)
-                        UserAnnotation()
-                    }
-                    .frame(height: 220)
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    // アプリ内の Google マップ。
+                    GoogleMapView(coordinate: event.coordinate)
+                        .frame(height: 220)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
 
                     InfoRow(icon: "clock", text: event.date.formatted(date: .abbreviated, time: .shortened))
                     if let distance = distanceText {
@@ -136,12 +122,15 @@ private struct LatestDisconnectCard: View {
                     InfoRow(icon: "scope", text: "精度 約\(Int(event.horizontalAccuracy))m")
 
                     Button {
-                        openInMaps()
+                        showFullMap = true
                     } label: {
-                        Label("マップで道順を見る", systemImage: "arrow.triangle.turn.up.right.diamond.fill")
+                        Label("大きな地図で見る", systemImage: "map.fill")
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.borderedProminent)
+                    .sheet(isPresented: $showFullMap) {
+                        GoogleMapScreen(event: event)
+                    }
                 } else {
                     Text("\(event.deviceName) が \(event.date.formatted(date: .abbreviated, time: .shortened)) に切断されましたが、位置情報を取得できませんでした。")
                         .font(.callout)
@@ -159,15 +148,6 @@ private struct LatestDisconnectCard: View {
             return "\(Int(meters))m"
         }
         return String(format: "%.1fkm", meters / 1000)
-    }
-
-    private func openInMaps() {
-        let placemark = MKPlacemark(coordinate: event.coordinate)
-        let item = MKMapItem(placemark: placemark)
-        item.name = "\(event.deviceName) が切れた場所"
-        item.openInMaps(launchOptions: [
-            MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeWalking
-        ])
     }
 }
 
@@ -205,23 +185,21 @@ private struct HistorySection: View {
 
     var body: some View {
         if !model.store.events.isEmpty {
-            Card {
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text("履歴")
-                            .font(.headline)
-                        Spacer()
-                        Button("すべて消去", role: .destructive) {
-                            model.store.clear()
-                        }
-                        .font(.caption)
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    Text("履歴")
+                        .font(.headline)
+                    Spacer()
+                    Button("すべて消去", role: .destructive) {
+                        model.store.clear()
                     }
-                    ForEach(model.store.events) { event in
-                        HistoryRow(event: event)
-                        if event.id != model.store.events.last?.id {
-                            Divider()
-                        }
-                    }
+                    .font(.caption)
+                }
+                .padding(.horizontal, 4)
+
+                // 日付ごとにまとめて表示。
+                ForEach(model.store.eventsByDay, id: \.day) { group in
+                    DaySection(day: group.day, events: group.events)
                 }
             }
 
@@ -236,8 +214,43 @@ private struct HistorySection: View {
     }
 }
 
+/// 1日分の切断イベントをまとめたセクション。
+private struct DaySection: View {
+    let day: Date
+    let events: [DisconnectEvent]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(dayTitle)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 4)
+
+            Card {
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(events) { event in
+                        HistoryRow(event: event)
+                        if event.id != events.last?.id {
+                            Divider()
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// 「今日」「昨日」または日付（曜日つき）。
+    private var dayTitle: String {
+        let calendar = Calendar.current
+        if calendar.isDateInToday(day) { return "今日" }
+        if calendar.isDateInYesterday(day) { return "昨日" }
+        return day.formatted(.dateTime.year().month().day().weekday(.abbreviated))
+    }
+}
+
 private struct HistoryRow: View {
     let event: DisconnectEvent
+    @State private var showFullMap = false
 
     var body: some View {
         HStack(spacing: 12) {
@@ -246,22 +259,33 @@ private struct HistoryRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(event.deviceName)
                     .font(.subheadline.weight(.medium))
-                Text(event.date.formatted(date: .abbreviated, time: .shortened))
+                Text(event.date.formatted(date: .omitted, time: .shortened))
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                if event.hasValidLocation {
+                    Text(String(format: "%.5f, %.5f", event.latitude, event.longitude))
+                        .font(.caption2.monospaced())
+                        .foregroundStyle(.tertiary)
+                }
             }
             Spacer()
             if event.hasValidLocation {
                 Button {
-                    let item = MKMapItem(placemark: MKPlacemark(coordinate: event.coordinate))
-                    item.name = event.deviceName
-                    item.openInMaps()
+                    showFullMap = true
                 } label: {
-                    Image(systemName: "map")
+                    Image(systemName: "map.fill")
                 }
+                .buttonStyle(.borderless)
             }
         }
         .padding(.vertical, 4)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            if event.hasValidLocation { showFullMap = true }
+        }
+        .sheet(isPresented: $showFullMap) {
+            GoogleMapScreen(event: event)
+        }
     }
 }
 
