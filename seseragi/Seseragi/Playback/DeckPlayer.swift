@@ -2,14 +2,18 @@ import AVFoundation
 import MediaPlayer
 import SwiftUI
 
-/// 1本の「ながれ」＝独立したプレイヤーデッキ。
-/// ミュージックライブラリから選んだ曲を AVAudioPlayer で再生する。
-/// 2つのデッキは同じ AVAudioSession 上で自動的にミックスされる。
+/// AVAudioPlayer ベースのデッキ。
+/// ミュージックライブラリから選んだ端末内の曲をファイルとして再生する。
+/// アプリ内の独立音量調整・フェードに対応する（DRM 保護曲は再生できない）。
 @MainActor
-final class DeckPlayer: NSObject, ObservableObject {
+final class DeckPlayer: NSObject, ObservableObject, DeckControlling {
 
     let label: String
+    let subtitle = "端末内の曲・独立音量ミックス対応"
     let tint: Color
+
+    let supportsVolume = true
+    let allowsCloudItems = false
 
     @Published private(set) var items: [MPMediaItem] = []
     @Published private(set) var currentIndex = 0
@@ -43,13 +47,29 @@ final class DeckPlayer: NSObject, ObservableObject {
 
     var hasQueue: Bool { !items.isEmpty }
 
+    var positionText: String {
+        guard hasQueue else { return "" }
+        return "\(currentIndex + 1) / \(items.count) 曲"
+    }
+
+    var currentTitle: String? { currentItem?.title }
+    var currentArtist: String? { currentItem?.artist }
+
+    var artworkImage: UIImage? {
+        currentItem?.artwork?.image(at: CGSize(width: 112, height: 112))
+    }
+
+    func setFade(_ value: Double) {
+        fade = value
+    }
+
     // MARK: - キュー操作
 
     /// ミュージックピッカーで選んだ曲をこのデッキのキューにして再生を始める。
-    /// DRM 保護された曲（Apple Music のストリーミング曲など）は
-    /// AVAudioPlayer で再生できないため除外する。
+    /// 事前に除外するのは「ファイルの実体が端末になく URL が取れない曲」のみ。
+    /// それ以外はできる限り再生を試み、失敗した曲は再生時にスキップする。
     func load(_ picked: [MPMediaItem]) {
-        let playable = picked.filter { $0.assetURL != nil && !$0.hasProtectedAsset }
+        let playable = picked.filter { $0.assetURL != nil }
         skippedCount = picked.count - playable.count
         items = playable
         currentIndex = 0

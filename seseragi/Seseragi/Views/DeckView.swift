@@ -3,9 +3,10 @@ import SwiftUI
 
 /// 1つの「ながれ」（デッキ）の操作カード。
 /// 曲情報・進行バー・再生操作・リピート・音量スライダー・選曲を担う。
-struct DeckView: View {
+/// DeckControlling に適合するどのデッキ（AVAudioPlayer 系 / システムプレイヤー系）でも使える。
+struct DeckView<Deck: DeckControlling>: View {
 
-    @ObservedObject var deck: DeckPlayer
+    @ObservedObject var deck: Deck
     @State private var showPicker = false
     @State private var showSkippedAlert = false
 
@@ -19,7 +20,7 @@ struct DeckView: View {
             } else {
                 emptyState
             }
-            volumeSlider
+            volumeArea
         }
         .padding(18)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
@@ -28,7 +29,10 @@ struct DeckView: View {
                 .strokeBorder(deck.tint.opacity(0.35), lineWidth: 1)
         )
         .sheet(isPresented: $showPicker) {
-            MediaPickerView(prompt: "「\(deck.label)」で流す曲を選ぶ") { items in
+            MediaPickerView(
+                prompt: "「\(deck.label)」で流す曲を選ぶ",
+                showsCloudItems: deck.allowsCloudItems
+            ) { items in
                 deck.load(items)
                 if deck.skippedCount > 0 {
                     showSkippedAlert = true
@@ -39,7 +43,7 @@ struct DeckView: View {
         .alert("再生できない曲がありました", isPresented: $showSkippedAlert) {
             Button("OK", role: .cancel) {}
         } message: {
-            Text("\(deck.skippedCount) 曲を除外しました。Apple Music のストリーミング曲など DRM 保護された曲は、2つ同時の再生には使えません。購入した曲や CD から取り込んだ曲をお使いください。")
+            Text("\(deck.skippedCount) 曲を除外しました。曲のファイルが端末にない（未ダウンロード）か、DRM 保護されています。ミュージックアプリで端末にダウンロードしてから選び直すか、Apple Music の曲は「ながれ B」でお使いください。")
         }
     }
 
@@ -47,9 +51,14 @@ struct DeckView: View {
 
     private var header: some View {
         HStack {
-            Label(deck.label, systemImage: "water.waves")
-                .font(.headline)
-                .foregroundStyle(deck.tint)
+            VStack(alignment: .leading, spacing: 2) {
+                Label(deck.label, systemImage: "water.waves")
+                    .font(.headline)
+                    .foregroundStyle(deck.tint)
+                Text(deck.subtitle)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
             Spacer()
             Button {
                 showPicker = true
@@ -66,14 +75,14 @@ struct DeckView: View {
         HStack(spacing: 12) {
             artwork
             VStack(alignment: .leading, spacing: 3) {
-                Text(deck.currentItem?.title ?? "不明な曲")
+                Text(deck.currentTitle ?? "不明な曲")
                     .font(.body.weight(.semibold))
                     .lineLimit(1)
-                Text(deck.currentItem?.artist ?? "不明なアーティスト")
+                Text(deck.currentArtist ?? "不明なアーティスト")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
-                Text("\(deck.currentIndex + 1) / \(deck.items.count) 曲")
+                Text(deck.positionText)
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
             }
@@ -83,7 +92,7 @@ struct DeckView: View {
 
     @ViewBuilder
     private var artwork: some View {
-        if let image = deck.currentItem?.artwork?.image(at: CGSize(width: 112, height: 112)) {
+        if let image = deck.artworkImage {
             Image(uiImage: image)
                 .resizable()
                 .scaledToFill()
@@ -186,16 +195,28 @@ struct DeckView: View {
         }
     }
 
-    private var volumeSlider: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "speaker.fill")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Slider(value: $deck.volume, in: 0...1)
-                .tint(deck.tint)
-            Image(systemName: "speaker.wave.3.fill")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+    @ViewBuilder
+    private var volumeArea: some View {
+        if deck.supportsVolume {
+            HStack(spacing: 10) {
+                Image(systemName: "speaker.fill")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Slider(value: $deck.volume, in: 0...1)
+                    .tint(deck.tint)
+                Image(systemName: "speaker.wave.3.fill")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        } else {
+            HStack(spacing: 6) {
+                Image(systemName: "speaker.wave.2")
+                    .font(.caption2)
+                Text("音量は本体の音量ボタンと連動。バランスはもう一方のながれ側で調整してください。")
+                    .font(.caption2)
+            }
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 

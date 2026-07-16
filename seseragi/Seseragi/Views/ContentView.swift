@@ -3,19 +3,23 @@ import SwiftUI
 
 struct ContentView: View {
 
+    /// ながれ A: ファイル再生（独立音量対応・端末内の DRM フリー曲）
     @StateObject private var deckA: DeckPlayer
-    @StateObject private var deckB: DeckPlayer
+    /// ながれ B: システムプレイヤー（Apple Music・DRM 曲対応・音量は本体連動）
+    @StateObject private var deckB: MusicDeckPlayer
     @StateObject private var sleepTimer: SleepTimer
 
     @State private var authStatus = MPMediaLibrary.authorizationStatus()
 
     init() {
         let a = DeckPlayer(label: "ながれ A", tint: Color(red: 0.45, green: 0.85, blue: 0.95))
-        let b = DeckPlayer(label: "ながれ B", tint: Color(red: 0.55, green: 0.95, blue: 0.75))
+        let b = MusicDeckPlayer(label: "ながれ B", tint: Color(red: 0.55, green: 0.95, blue: 0.75))
         _deckA = StateObject(wrappedValue: a)
         _deckB = StateObject(wrappedValue: b)
         _sleepTimer = StateObject(wrappedValue: SleepTimer(decks: [a, b]))
     }
+
+    private var allDecks: [any DeckControlling] { [deckA, deckB] }
 
     var body: some View {
         ZStack {
@@ -41,7 +45,10 @@ struct ContentView: View {
         }
         .preferredColorScheme(.dark)
         .onAppear {
-            PlaybackHub.shared.register(decks: [deckA, deckB])
+            // ハブが管理するのは AVAudioPlayer 系のデッキのみ。
+            // ながれ B（システムプレイヤー）は Music アプリ自身が
+            // 割り込みやロック画面表示を処理する。
+            PlaybackHub.shared.register(decks: [deckA])
             requestAuthorizationIfNeeded()
         }
     }
@@ -72,7 +79,7 @@ struct ContentView: View {
     private var allPlayButton: some View {
         Button {
             let pauseAll = anyPlaying
-            for deck in [deckA, deckB] where deck.hasQueue {
+            for deck in allDecks where deck.hasQueue {
                 pauseAll ? deck.pause() : deck.play()
             }
         } label: {

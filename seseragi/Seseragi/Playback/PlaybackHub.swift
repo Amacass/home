@@ -29,7 +29,17 @@ final class PlaybackHub {
     }
 
     private func configureSession() {
-        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
+        // .mixWithOthers が必須:
+        // ながれ B はシステムのミュージックプレイヤー（Music アプリのエンジン）で
+        // 再生するため、これがないと B の再生開始時に A のセッションが
+        // 割り込みで止められてしまう。
+        // 代償として、このアプリ自身の音（ながれ A）はロック画面の
+        // Now Playing に表示されにくくなる（ながれ B は Music アプリとして表示される）。
+        try? AVAudioSession.sharedInstance().setCategory(
+            .playback,
+            mode: .default,
+            options: [.mixWithOthers]
+        )
     }
 
     private func configureRemoteCommands() {

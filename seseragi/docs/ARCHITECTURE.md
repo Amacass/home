@@ -8,14 +8,15 @@
 graph TD
     subgraph Views
         CV[ContentView<br/>画面全体・権限・全体操作]
-        DV1[DeckView A]
-        DV2[DeckView B]
+        DV1[DeckView&lt;DeckPlayer&gt;]
+        DV2[DeckView&lt;MusicDeckPlayer&gt;]
         WB[WaterBackground<br/>清流アニメーション]
         MP[MediaPickerView<br/>MPMediaPicker ラッパー]
     end
     subgraph Playback
-        DA[DeckPlayer A<br/>AVAudioPlayer]
-        DB[DeckPlayer B<br/>AVAudioPlayer]
+        PROTO[DeckControlling<br/>デッキ共通プロトコル]
+        DA[DeckPlayer A<br/>AVAudioPlayer / 独立音量]
+        DB[MusicDeckPlayer B<br/>systemMusicPlayer / Apple Music対応]
         HUB[PlaybackHub<br/>AVAudioSession / RemoteCommand / NowPlaying]
         ST[SleepTimer]
     end
@@ -27,8 +28,9 @@ graph TD
     CV --> ST
     ST --> DA
     ST --> DB
+    DA -.適合.-> PROTO
+    DB -.適合.-> PROTO
     DA --> HUB
-    DB --> HUB
 ```
 
 ## 2. モジュールと責務
@@ -37,28 +39,44 @@ graph TD
 |---|---|---|
 | `SeseragiApp` | `App` | エントリポイント |
 | `ContentView` | `View` | 画面全体のレイアウト、権限リクエスト、全体再生/停止、タイマーメニュー |
-| `DeckView` | `View` | 1デッキ分の UI（曲情報・進行バー・操作・音量・選曲シート・除外アラート） |
+| `DeckView<Deck>` | `View`（ジェネリック） | 1デッキ分の UI。`DeckControlling` 適合ならどのデッキでも表示できる。音量非対応デッキでは注記を表示 |
 | `WaterBackground` | `View` | 清流の背景。グラデーション + `TimelineView`/`Canvas` による波アニメーション |
-| `MediaPickerView` | `UIViewControllerRepresentable` | `MPMediaPickerController` の SwiftUI ラッパー |
-| `DeckPlayer` | `ObservableObject` | **1系統の再生エンジン**。キュー管理・再生制御・リピート・音量・進行状況 |
-| `PlaybackHub` | シングルトン | AVAudioSession 設定、割り込み処理、リモートコマンド、Now Playing 更新 |
-| `SleepTimer` | `ObservableObject` | おやすみタイマー。カウントダウンとフェードアウト |
+| `MediaPickerView` | `UIViewControllerRepresentable` | `MPMediaPickerController` の SwiftUI ラッパー（クラウド曲の表示可否をデッキごとに切替） |
+| `DeckControlling` | `protocol` | **デッキ共通インターフェース**。選曲・再生操作・リピート・音量・フェードを抽象化 |
+| `DeckPlayer` | `ObservableObject` | ながれ A の再生エンジン（`AVAudioPlayer`）。キュー管理・リピート・独立音量・フェード |
+| `MusicDeckPlayer` | `ObservableObject` | ながれ B の再生エンジン（`MPMusicPlayerController.systemMusicPlayer`）。Apple Music / DRM 曲対応 |
+| `PlaybackHub` | シングルトン | AVAudioSession 設定（mixWithOthers）、割り込み処理、リモートコマンド、Now Playing 更新（ながれ A のみ管理） |
+| `SleepTimer` | `ObservableObject` | おやすみタイマー。カウントダウンとフェードアウト（フェードは対応デッキのみ） |
 | `RepeatMode` | `enum` | リピートモード（playlist / single / off）と表示情報 |
 
 ## 3. 再生エンジン設計
 
-### なぜ AVAudioPlayer ×2 か
+### なぜハイブリッド（AVAudioPlayer + systemMusicPlayer）か
 
-| 手段 | 並列再生 | 独立音量 | DRM 曲 | 採用 |
-|---|---|---|---|---|
-| `MPMusicPlayerController` | ❌ 1系統のみ | ❌ | ✅ | 不採用 |
-| `AVPlayer` ×2 | ✅ | ✅ | ❌ | 可（機能は同等） |
-| **`AVAudioPlayer` ×2** | ✅ | ✅ | ❌ | **採用**（ローカルファイル再生に最適・実装が簡潔） |
+| 手段 | 並列再生 | 独立音量 | DRM / Apple Music 曲 |
+|---|---|---|---|
+| `MPMusicPlayerController` | ❌ 1アプリ1系統のみ | ❌ | ✅ |
+| `AVAudioPlayer` / `AVPlayer` | ✅ 複数可 | ✅ | ❌ |
 
-2つの `DeckPlayer` が各自 `AVAudioPlayer` を保持する。
-同一の `AVAudioSession`（category: `.playback`）上で両者は自動的にミックスされる。
+どちらか一方では要件（並列 + なるべく全曲対応）を満たせないため、
+**ながれ A = `AVAudioPlayer`（独立音量・フェード担当）、
+ながれ B = `MPMusicPlayerController.systemMusicPlayer`（DRM / Apple Music 担当）**
+のハイブリッドとする。
 
-### DeckPlayer の状態
+- systemMusicPlayer を選ぶ理由: `applicationMusicPlayer` / `applicationQueuePlayer` は
+  アプリがバックグラウンドに移ると再生が停止するため、就寝用途に使えない。
+  systemMusicPlayer は Music アプリ自身のエンジンなので画面を消しても再生が続く。
+- 副作用: ながれ B のキュー・リピート設定は Music アプリと共有される。
+- 両者の同時再生には AVAudioSession の `.mixWithOthers` が必須
+  （ないと ながれ B の再生開始が ながれ A を割り込み停止させる）。
+
+### DeckControlling プロトコル
+
+2種類のデッキを UI（`DeckView<Deck>`）と `SleepTimer` から同一視するための
+共通インターフェース。音量対応可否（`supportsVolume`）や、ピッカーにクラウド曲を
+出すか（`allowsCloudItems`）といった能力の違いもプロトコル経由で表現する。
+
+### DeckPlayer（ながれ A）の状態
 
 ```
 items:        [MPMediaItem]   キュー（DRM フィルタ済み）
@@ -82,21 +100,38 @@ playlist → 次の曲へ（最後の曲なら先頭へ戻る）
 off      → 次の曲へ（最後の曲なら停止）
 ```
 
-### DRM フィルタ
+### 再生可否フィルタ（ながれ A のみ）
 
-選曲直後に `assetURL != nil && !hasProtectedAsset` でフィルタし、
-除外件数を `skippedCount` に記録して UI がアラートを出す。
-また読み込み失敗（`AVAudioPlayer` 初期化エラー）した曲はキューから取り除いて次の曲へ進む。
+読める曲を最大化するため、事前除外は最小限にする:
+
+1. ピッカーで `showsCloudItems = false`（実体のないクラウド曲を隠す）
+2. 選曲後は `assetURL == nil` の曲だけを除外（`hasProtectedAsset` では弾かない。
+   フラグが立っていても実際には読める場合があるため、実再生で判定する）
+3. `AVAudioPlayer` の初期化に失敗した曲はその場でキューから外し次の曲へ
+
+除外・スキップ件数は `skippedCount` に記録し、UI がアラートで
+「ミュージックアプリでのダウンロード」または「ながれ B の利用」を案内する。
+
+### MusicDeckPlayer（ながれ B）
+
+- `setQueue(with: MPMediaItemCollection)` でピッカーの選択をそのままキューに設定。除外なし。
+- リピートは `MPMusicRepeatMode`（.all / .one / .none）に 1:1 でマップ。
+- 状態同期は `playbackStateDidChange` / `nowPlayingItemDidChange` 通知 + 0.5 秒の進行タイマー。
+- 音量・フェードは iOS の制約で操作不可（`setFade` は no-op）。
 
 ## 4. オーディオセッションとシステム連携（PlaybackHub）
 
-- **セッション**: `category = .playback`（サイレントスイッチ無視・バックグラウンド再生）。
+PlaybackHub が管理するのは **AVAudioPlayer 系デッキ（ながれ A）のみ**。
+ながれ B は Music アプリ自身が割り込み・ロック画面・バックグラウンドを処理する。
+
+- **セッション**: `category = .playback, options = [.mixWithOthers]`
+  （サイレントスイッチ無視・バックグラウンド再生・Music アプリとの同時再生）。
   再生開始時に `setActive(true)`。
-- **割り込み**: `AVAudioSession.interruptionNotification` の `.began` で両デッキを一時停止。
-- **リモートコマンド**: play / pause / togglePlayPause を両デッキ一括操作に割り当て。
-  next / previous は 2 デッキのどちらを指すか曖昧なため無効化。
-- **Now Playing**: 両デッキの曲名を「曲A ✕ 曲B」に連結してタイトル表示。
-  再生レートは「どちらかが再生中なら 1.0」。アートワークは代表デッキのものを表示。
+- **割り込み**: `AVAudioSession.interruptionNotification` の `.began` で ながれ A を一時停止
+  （ながれ B は Music アプリが自動処理）。
+- **リモートコマンド / Now Playing**: ながれ A 向けに登録するが、
+  `mixWithOthers` のセッションはロック画面に表示されないことが多い。
+  実際のロック画面操作は ながれ B（ミュージックとして表示）が担う。
 
 ## 5. 並行性（Concurrency）
 

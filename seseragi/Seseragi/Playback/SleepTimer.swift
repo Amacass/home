@@ -2,6 +2,7 @@ import Foundation
 
 /// おやすみタイマー。指定時間が経過すると両方のデッキを
 /// ゆっくりフェードアウトさせてから一時停止する。
+/// （フェードは音量操作に対応するデッキのみ。システムプレイヤーのデッキは停止のみ）
 @MainActor
 final class SleepTimer: ObservableObject {
 
@@ -10,12 +11,12 @@ final class SleepTimer: ObservableObject {
     @Published private(set) var remaining: TimeInterval = 0
     @Published private(set) var isActive = false
 
-    private let decks: [DeckPlayer]
+    private let decks: [any DeckControlling]
     private var timer: Timer?
     /// フェードアウトにかける秒数
     private let fadeDuration: TimeInterval = 20
 
-    init(decks: [DeckPlayer]) {
+    init(decks: [any DeckControlling]) {
         self.decks = decks
     }
 
@@ -41,7 +42,7 @@ final class SleepTimer: ObservableObject {
         isActive = false
         remaining = 0
         // フェード係数を元に戻す（ユーザー設定音量には触れない）
-        decks.forEach { $0.fade = 1.0 }
+        decks.forEach { $0.setFade(1.0) }
     }
 
     private func tick() {
@@ -49,7 +50,7 @@ final class SleepTimer: ObservableObject {
         if remaining <= fadeDuration {
             // 残り時間に比例して音量をゆっくり絞る
             let scale = max(remaining / fadeDuration, 0)
-            decks.forEach { $0.fade = scale }
+            decks.forEach { $0.setFade(scale) }
         }
         if remaining <= 0 {
             decks.forEach { $0.pause() }

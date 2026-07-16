@@ -6,6 +6,10 @@ import SwiftUI
 struct MediaPickerView: UIViewControllerRepresentable {
 
     let prompt: String
+    /// クラウド上の曲（Apple Music など）を表示するか。
+    /// ファイル再生のデッキ（ながれ A）では再生できないため隠し、
+    /// システムプレイヤーのデッキ（ながれ B）では表示する。
+    let showsCloudItems: Bool
     let onPicked: ([MPMediaItem]) -> Void
 
     @Environment(\.dismiss) private var dismiss
@@ -13,8 +17,7 @@ struct MediaPickerView: UIViewControllerRepresentable {
     func makeUIViewController(context: Context) -> MPMediaPickerController {
         let picker = MPMediaPickerController(mediaTypes: .music)
         picker.allowsPickingMultipleItems = true
-        // 端末にダウンロードされていないクラウド上の曲は再生できないため隠す
-        picker.showsCloudItems = false
+        picker.showsCloudItems = showsCloudItems
         picker.prompt = prompt
         picker.delegate = context.coordinator
         return picker
