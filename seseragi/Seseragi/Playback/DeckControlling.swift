@@ -32,6 +32,8 @@ protocol DeckControlling: AnyObject, ObservableObject {
     var allowsCloudItems: Bool { get }
     /// 選曲時に再生できず除外した曲数
     var skippedCount: Int { get }
+    /// 再生開始に失敗したときのエラーメッセージ（UI がアラート表示後に nil へ戻す）
+    var errorMessage: String? { get set }
 
     func load(_ items: [MPMediaItem])
     func play()

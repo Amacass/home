@@ -45,6 +45,21 @@ struct DeckView<Deck: DeckControlling>: View {
         } message: {
             Text("\(deck.skippedCount) 曲を除外しました。曲のファイルが端末にない（未ダウンロード）か、DRM 保護されています。ミュージックアプリで端末にダウンロードしてから選び直すか、Apple Music の曲は「ながれ B」でお使いください。")
         }
+        .alert("再生エラー", isPresented: errorAlertBinding) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(deck.errorMessage ?? "")
+        }
+    }
+
+    /// deck.errorMessage の有無をアラート表示にマップする（閉じたら nil に戻す）
+    private var errorAlertBinding: Binding<Bool> {
+        Binding(
+            get: { deck.errorMessage != nil },
+            set: { isPresented in
+                if !isPresented { deck.errorMessage = nil }
+            }
+        )
     }
 
     // MARK: - パーツ

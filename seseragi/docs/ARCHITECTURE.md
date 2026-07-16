@@ -114,7 +114,14 @@ off      → 次の曲へ（最後の曲なら停止）
 
 ### MusicDeckPlayer（ながれ B）
 
-- `setQueue(with: MPMediaItemCollection)` でピッカーの選択をそのままキューに設定。除外なし。
+- キューの入れ方を曲の種類で使い分ける（除外はしない）:
+  - 全曲が Apple Music カタログ ID（`playbackStoreID`）を持つ場合 →
+    `MPMusicPlayerStoreQueueDescriptor(storeIDs:)`。
+    **ストリーミング曲はこの経路でないと「再生できません」エラーになることがある。**
+  - ID を持たないローカル曲が混ざる場合 → `MPMediaItemCollection`。
+- `setQueue` 直後の `play()` は失敗することがあるため、
+  `prepareToPlay(completionHandler:)` の完了を待ってから再生する。
+  エラーは `errorMessage` に格納し、UI がアラート表示する。
 - リピートは `MPMusicRepeatMode`（.all / .one / .none）に 1:1 でマップ。
 - 状態同期は `playbackStateDidChange` / `nowPlayingItemDidChange` 通知 + 0.5 秒の進行タイマー。
 - 音量・フェードは iOS の制約で操作不可（`setFade` は no-op）。

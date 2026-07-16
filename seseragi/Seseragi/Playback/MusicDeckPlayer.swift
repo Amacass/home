@@ -26,6 +26,8 @@ final class MusicDeckPlayer: ObservableObject, DeckControlling {
     @Published var repeatMode: RepeatMode = .playlist {
         didSet { applyRepeatMode() }
     }
+    /// 再生開始に失敗したときのエラーメッセージ（UI がアラート表示する）
+    @Published var errorMessage: String?
 
     // このデッキはすべての曲を再生できるため、除外は発生しない
     let skippedCount = 0
@@ -87,10 +89,31 @@ final class MusicDeckPlayer: ObservableObject, DeckControlling {
     func load(_ picked: [MPMediaItem]) {
         guard !picked.isEmpty else { return }
         items = picked
-        player.setQueue(with: MPMediaItemCollection(items: picked))
+
+        // Apple Music のストリーミング曲は MPMediaItemCollection のキューだと
+        // 「この項目は再生できません」エラーになることがある。
+        // 全曲に Apple Music カタログの ID がある場合はストア ID ベースの
+        // キューを使う（ストリーミング曲の正式な再生経路）。
+        // ローカルのみの曲（ID を持たない曲）が混ざる場合はコレクションで入れる。
+        let storeIDs = picked.map(\.playbackStoreID)
+        if storeIDs.allSatisfy({ !$0.isEmpty && $0 != "0" }) {
+            player.setQueue(with: MPMusicPlayerStoreQueueDescriptor(storeIDs: storeIDs))
+        } else {
+            player.setQueue(with: MPMediaItemCollection(items: picked))
+        }
         applyRepeatMode()
-        player.play()
-        syncState()
+
+        // setQueue 直後の play() は失敗することがあるため、準備完了を待ってから再生する
+        player.prepareToPlay { [weak self] error in
+            Task { @MainActor in
+                guard let self else { return }
+                if let error {
+                    self.errorMessage = "再生を開始できませんでした: \(error.localizedDescription)\n\nApple Music のサブスクリプションが有効か、ストリーミングが許可されているか（設定 → ミュージック）を確認してください。"
+                }
+                self.player.play()
+                self.syncState()
+            }
+        }
     }
 
     func play() {

@@ -31,6 +31,8 @@ final class DeckPlayer: NSObject, ObservableObject, DeckControlling {
     }
     /// DRM 保護などで再生できずに除外した曲数（アラート表示用）
     @Published var skippedCount = 0
+    /// 再生開始に失敗したときのエラーメッセージ（UI がアラート表示する）
+    @Published var errorMessage: String?
 
     private var player: AVAudioPlayer?
     private var progressTimer: Timer?
