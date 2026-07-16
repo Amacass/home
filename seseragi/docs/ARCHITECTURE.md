@@ -7,11 +7,12 @@
 ```mermaid
 graph TD
     subgraph Views
-        CV[ContentView<br/>画面全体・権限・全体操作]
+        CV[ContentView<br/>画面全体・権限・選曲シート・全体操作]
         DV1[DeckView&lt;DeckPlayer&gt;]
         DV2[DeckView&lt;MusicDeckPlayer&gt;]
         WB[WaterBackground<br/>清流アニメーション]
-        MP[MediaPickerView<br/>MPMediaPicker ラッパー]
+        MP[MediaPickerView<br/>MPMediaPicker ラッパー<br/>（ながれ A）]
+        MS[MusicSearchView<br/>MusicKit カタログ検索<br/>（ながれ B）]
     end
     subgraph Playback
         PROTO[DeckControlling<br/>デッキ共通プロトコル]
@@ -23,8 +24,10 @@ graph TD
     CV --> DV1 --> DA
     CV --> DV2 --> DB
     CV --> WB
-    DV1 -.sheet.-> MP
-    DV2 -.sheet.-> MP
+    CV -.sheet.-> MP
+    CV -.sheet.-> MS
+    MP -->|MPMediaItem| DA
+    MS -->|CatalogTrack| DB
     CV --> ST
     ST --> DA
     ST --> DB
@@ -33,18 +36,25 @@ graph TD
     DA --> HUB
 ```
 
+選曲シートの提示は親（ContentView）が担う。`DeckView` は選曲の起点となる
+クロージャ（`onSelect`）だけを受け取り、どのピッカー／検索を出すかは知らない。
+これにより「ライブラリピッカー（MPMediaItem）」と「カタログ検索（CatalogTrack）」という
+戻り値の型が異なる2方式を、ジェネリックな `DeckView` を壊さずに共存させている。
+
 ## 2. モジュールと責務
 
 | クラス / 型 | 種別 | 責務 |
 |---|---|---|
 | `SeseragiApp` | `App` | エントリポイント |
 | `ContentView` | `View` | 画面全体のレイアウト、権限リクエスト、全体再生/停止、タイマーメニュー |
-| `DeckView<Deck>` | `View`（ジェネリック） | 1デッキ分の UI。`DeckControlling` 適合ならどのデッキでも表示できる。音量非対応デッキでは注記を表示 |
+| `DeckView<Deck>` | `View`（ジェネリック） | 1デッキ分の UI。`DeckControlling` 適合ならどのデッキでも表示できる。音量非対応デッキでは注記を表示。選曲は `onSelect` クロージャで親へ委譲 |
 | `WaterBackground` | `View` | 清流の背景。グラデーション + `TimelineView`/`Canvas` による波アニメーション |
-| `MediaPickerView` | `UIViewControllerRepresentable` | `MPMediaPickerController` の SwiftUI ラッパー（クラウド曲の表示可否をデッキごとに切替） |
-| `DeckControlling` | `protocol` | **デッキ共通インターフェース**。選曲・再生操作・リピート・音量・フェードを抽象化 |
+| `MediaPickerView` | `UIViewControllerRepresentable` | ながれ A 用。`MPMediaPickerController` の SwiftUI ラッパー |
+| `MusicSearchView` | `View` | ながれ B 用。MusicKit でカタログ検索し `CatalogTrack` を返す。権限要求・デバウンス検索・複数選択 |
+| `CatalogTrack` | `struct` | カタログ検索の選択結果（ストアID + 表示情報）。MusicKit 非依存の受け渡し用モデル |
+| `DeckControlling` | `protocol` | **デッキ共通インターフェース**。再生操作・リピート・音量・フェード・表示を抽象化（選曲は含めない） |
 | `DeckPlayer` | `ObservableObject` | ながれ A の再生エンジン（`AVAudioPlayer`）。キュー管理・リピート・独立音量・フェード |
-| `MusicDeckPlayer` | `ObservableObject` | ながれ B の再生エンジン（`MPMusicPlayerController.systemMusicPlayer`）。Apple Music / DRM 曲対応 |
+| `MusicDeckPlayer` | `ObservableObject` | ながれ B の再生エンジン（`MPMusicPlayerController.systemMusicPlayer`）。カタログのストアIDキューで Apple Music / DRM 曲を再生 |
 | `PlaybackHub` | シングルトン | AVAudioSession 設定（mixWithOthers）、割り込み処理、リモートコマンド、Now Playing 更新（ながれ A のみ管理） |
 | `SleepTimer` | `ObservableObject` | おやすみタイマー。カウントダウンとフェードアウト（フェードは対応デッキのみ） |
 | `RepeatMode` | `enum` | リピートモード（playlist / single / off）と表示情報 |
@@ -112,16 +122,22 @@ off      → 次の曲へ（最後の曲なら停止）
 除外・スキップ件数は `skippedCount` に記録し、UI がアラートで
 「ミュージックアプリでのダウンロード」または「ながれ B の利用」を案内する。
 
-### MusicDeckPlayer（ながれ B）
+### MusicSearchView / MusicDeckPlayer（ながれ B）
 
-- キューの入れ方を曲の種類で使い分ける（除外はしない）:
-  - 全曲が Apple Music カタログ ID（`playbackStoreID`）を持つ場合 →
-    `MPMusicPlayerStoreQueueDescriptor(storeIDs:)`。
-    **ストリーミング曲はこの経路でないと「再生できません」エラーになることがある。**
-  - ID を持たないローカル曲が混ざる場合 → `MPMediaItemCollection`。
+**選曲（MusicSearchView）**
+- `MusicAuthorization.request()` で Apple Music アクセスを要求（未許可なら設定導線）。
+- `.searchable` の入力を `.task(id:)` で監視し、約300ms デバウンス後に
+  `MusicCatalogSearchRequest(term:types:[Song.self])` を実行（`limit = 25`）。
+- 結果の `Song` から `CatalogTrack(id: song.id.rawValue, ...)` を作り、複数選択の順序を保持。
+- 「決定」で選択曲を `onDone([CatalogTrack])` として返す。
+
+**再生（MusicDeckPlayer）**
+- `MPMusicPlayerStoreQueueDescriptor(storeIDs:)` にストアIDを渡してキュー化。
+  カタログIDベースなので、ライブラリ未追加のストリーミング曲もそのまま再生できる。
 - `setQueue` 直後の `play()` は失敗することがあるため、
-  `prepareToPlay(completionHandler:)` の完了を待ってから再生する。
-  エラーは `errorMessage` に格納し、UI がアラート表示する。
+  `prepareToPlay(completionHandler:)` の完了を待ってから再生。エラーは `errorMessage` へ。
+- 曲名・アーティストは `nowPlayingItem` を優先し、解決前は `CatalogTrack` の情報を
+  フォールバック表示（`catalogDisplay` 辞書を `playbackStoreID` で引く）。
 - リピートは `MPMusicRepeatMode`（.all / .one / .none）に 1:1 でマップ。
 - 状態同期は `playbackStateDidChange` / `nowPlayingItemDidChange` 通知 + 0.5 秒の進行タイマー。
 - 音量・フェードは iOS の制約で操作不可（`setFade` は no-op）。

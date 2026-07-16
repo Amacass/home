@@ -10,9 +10,11 @@ final class DeckPlayer: NSObject, ObservableObject, DeckControlling {
 
     let label: String
     let subtitle = "端末内の曲・独立音量ミックス対応"
+    let selectionPrompt = "ミュージックから曲を選ぶ"
     let tint: Color
 
     let supportsVolume = true
+    /// ピッカーでクラウド上の曲を表示するか（このデッキは再生できないため false）
     let allowsCloudItems = false
 
     @Published private(set) var items: [MPMediaItem] = []
@@ -79,6 +81,9 @@ final class DeckPlayer: NSObject, ObservableObject, DeckControlling {
             stop()
         } else {
             startCurrent(autoplay: true)
+        }
+        if skippedCount > 0 {
+            errorMessage = "\(skippedCount) 曲を除外しました。曲のファイルが端末にない（未ダウンロード）か、DRM 保護されています。ミュージックアプリで端末にダウンロードしてから選び直すか、Apple Music の曲は「ながれ B」の検索でお使いください。"
         }
     }
 

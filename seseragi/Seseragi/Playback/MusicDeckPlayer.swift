@@ -3,8 +3,8 @@ import SwiftUI
 import UIKit
 
 /// システムのミュージックプレイヤー（Music アプリのエンジン）を使うデッキ。
-/// Apple Music のストリーミング曲・DRM 保護曲・未ダウンロードのクラウド曲を含む、
-/// ライブラリのすべての曲を再生できる。
+/// Apple Music カタログ検索で選んだ曲を、ストアID経由で再生する。
+/// ストリーミング曲・DRM 保護曲を含むすべての曲に対応する。
 ///
 /// 制約:
 /// - iOS の仕様によりアプリ内の独立音量調整は不可（iPhone 本体の音量と連動）
@@ -17,27 +17,30 @@ final class MusicDeckPlayer: ObservableObject, DeckControlling {
 
     let label: String
     let subtitle = "Apple Music対応・音量は本体と連動"
+    let selectionPrompt = "Apple Music を検索"
     let tint: Color
 
-    @Published private(set) var items: [MPMediaItem] = []
     @Published private(set) var isPlaying = false
     @Published private(set) var nowPlayingItem: MPMediaItem?
     @Published private(set) var currentTime: TimeInterval = 0
     @Published var repeatMode: RepeatMode = .playlist {
         didSet { applyRepeatMode() }
     }
-    /// 再生開始に失敗したときのエラーメッセージ（UI がアラート表示する）
     @Published var errorMessage: String?
 
-    // このデッキはすべての曲を再生できるため、除外は発生しない
-    let skippedCount = 0
     let supportsVolume = false
     var volume: Double = 1.0 // 未使用（プロトコル要件）
-    let allowsCloudItems = true
 
     private let player = MPMusicPlayerController.systemMusicPlayer
     private var progressTimer: Timer?
     private var observers: [NSObjectProtocol] = []
+
+    /// 現在のキューの曲数（表示用）
+    private var queueCount = 0
+    /// ストアID → 表示情報。nowPlayingItem のメタデータが揃うまでのフォールバックに使う
+    private var catalogDisplay: [String: CatalogTrack] = [:]
+    /// 再生開始直後、nowPlayingItem がまだ無いときに見せる先頭曲
+    private var firstFallback: CatalogTrack?
 
     init(label: String, tint: Color) {
         self.label = label
@@ -63,19 +66,26 @@ final class MusicDeckPlayer: ObservableObject, DeckControlling {
 
     // MARK: - DeckControlling
 
-    var hasQueue: Bool { !items.isEmpty }
+    var hasQueue: Bool { queueCount > 0 || nowPlayingItem != nil }
 
     var positionText: String {
-        guard hasQueue else { return "" }
+        guard queueCount > 0 else { return "" }
         let index = player.indexOfNowPlayingItem
-        guard index != NSNotFound, index < items.count else {
-            return "\(items.count) 曲"
+        guard index != NSNotFound, index < queueCount else {
+            return "\(queueCount) 曲"
         }
-        return "\(index + 1) / \(items.count) 曲"
+        return "\(index + 1) / \(queueCount) 曲"
     }
 
-    var currentTitle: String? { nowPlayingItem?.title }
-    var currentArtist: String? { nowPlayingItem?.artist }
+    var currentTitle: String? {
+        if let title = nowPlayingItem?.title, !title.isEmpty { return title }
+        return currentFallback?.title
+    }
+
+    var currentArtist: String? {
+        if let artist = nowPlayingItem?.artist, !artist.isEmpty { return artist }
+        return currentFallback?.artist
+    }
 
     var artworkImage: UIImage? {
         nowPlayingItem?.artwork?.image(at: CGSize(width: 112, height: 112))
@@ -85,22 +95,24 @@ final class MusicDeckPlayer: ObservableObject, DeckControlling {
         nowPlayingItem?.playbackDuration ?? 0
     }
 
-    /// 選んだ曲をそのままキューにする。DRM の除外は不要（全曲再生可能）。
-    func load(_ picked: [MPMediaItem]) {
-        guard !picked.isEmpty else { return }
-        items = picked
-
-        // Apple Music のストリーミング曲は MPMediaItemCollection のキューだと
-        // 「この項目は再生できません」エラーになることがある。
-        // 全曲に Apple Music カタログの ID がある場合はストア ID ベースの
-        // キューを使う（ストリーミング曲の正式な再生経路）。
-        // ローカルのみの曲（ID を持たない曲）が混ざる場合はコレクションで入れる。
-        let storeIDs = picked.map(\.playbackStoreID)
-        if storeIDs.allSatisfy({ !$0.isEmpty && $0 != "0" }) {
-            player.setQueue(with: MPMusicPlayerStoreQueueDescriptor(storeIDs: storeIDs))
-        } else {
-            player.setQueue(with: MPMediaItemCollection(items: picked))
+    /// 表示のフォールバック元。再生中の曲のストアIDに対応する検索結果、
+    /// なければ先頭曲。
+    private var currentFallback: CatalogTrack? {
+        if let id = nowPlayingItem?.playbackStoreID, let track = catalogDisplay[id] {
+            return track
         }
+        return firstFallback
+    }
+
+    /// カタログ検索で選んだ曲をキューにして再生を始める。
+    func loadCatalog(_ tracks: [CatalogTrack]) {
+        guard !tracks.isEmpty else { return }
+        catalogDisplay = Dictionary(tracks.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        firstFallback = tracks.first
+        queueCount = tracks.count
+
+        let ids = tracks.map(\.id)
+        player.setQueue(with: MPMusicPlayerStoreQueueDescriptor(storeIDs: ids))
         applyRepeatMode()
 
         // setQueue 直後の play() は失敗することがあるため、準備完了を待ってから再生する
@@ -108,7 +120,7 @@ final class MusicDeckPlayer: ObservableObject, DeckControlling {
             Task { @MainActor in
                 guard let self else { return }
                 if let error {
-                    self.errorMessage = "再生を開始できませんでした: \(error.localizedDescription)\n\nApple Music のサブスクリプションが有効か、ストリーミングが許可されているか（設定 → ミュージック）を確認してください。"
+                    self.errorMessage = "再生を開始できませんでした: \(error.localizedDescription)\n\nApple Music のサブスクリプションが有効か、通信状況（ストリーミング可否）を確認してください。"
                 }
                 self.player.play()
                 self.syncState()
@@ -117,7 +129,7 @@ final class MusicDeckPlayer: ObservableObject, DeckControlling {
     }
 
     func play() {
-        guard hasQueue || player.nowPlayingItem != nil else { return }
+        guard hasQueue else { return }
         player.play()
     }
 

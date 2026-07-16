@@ -7,8 +7,8 @@ import SwiftUI
 struct DeckView<Deck: DeckControlling>: View {
 
     @ObservedObject var deck: Deck
-    @State private var showPicker = false
-    @State private var showSkippedAlert = false
+    /// 選曲を開始する（親が適切なピッカー/検索シートを提示する）
+    let onSelect: () -> Void
 
     var body: some View {
         VStack(spacing: 14) {
@@ -28,24 +28,7 @@ struct DeckView<Deck: DeckControlling>: View {
             RoundedRectangle(cornerRadius: 28, style: .continuous)
                 .strokeBorder(deck.tint.opacity(0.35), lineWidth: 1)
         )
-        .sheet(isPresented: $showPicker) {
-            MediaPickerView(
-                prompt: "「\(deck.label)」で流す曲を選ぶ",
-                showsCloudItems: deck.allowsCloudItems
-            ) { items in
-                deck.load(items)
-                if deck.skippedCount > 0 {
-                    showSkippedAlert = true
-                }
-            }
-            .ignoresSafeArea()
-        }
-        .alert("再生できない曲がありました", isPresented: $showSkippedAlert) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text("\(deck.skippedCount) 曲を除外しました。曲のファイルが端末にない（未ダウンロード）か、DRM 保護されています。ミュージックアプリで端末にダウンロードしてから選び直すか、Apple Music の曲は「ながれ B」でお使いください。")
-        }
-        .alert("再生エラー", isPresented: errorAlertBinding) {
+        .alert("お知らせ", isPresented: errorAlertBinding) {
             Button("OK", role: .cancel) {}
         } message: {
             Text(deck.errorMessage ?? "")
@@ -76,7 +59,7 @@ struct DeckView<Deck: DeckControlling>: View {
             }
             Spacer()
             Button {
-                showPicker = true
+                onSelect()
             } label: {
                 Label("選曲", systemImage: "music.note.list")
                     .font(.subheadline.weight(.semibold))
@@ -196,12 +179,12 @@ struct DeckView<Deck: DeckControlling>: View {
 
     private var emptyState: some View {
         Button {
-            showPicker = true
+            onSelect()
         } label: {
             VStack(spacing: 8) {
                 Image(systemName: "plus.circle.dashed")
                     .font(.system(size: 40))
-                Text("ミュージックから曲を選ぶ")
+                Text(deck.selectionPrompt)
                     .font(.subheadline)
             }
             .foregroundStyle(deck.tint)

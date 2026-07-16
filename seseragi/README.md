@@ -10,8 +10,8 @@
 ## 主な機能
 
 - 🎵 **2デッキ並列再生** — 雨音のプレイリストとピアノのプレイリストを同時に再生
-- 📚 **ミュージックライブラリ連携** — iPhone の「ミュージック」から曲を複数選択（デッキごとに独立）
-- ☁️ **Apple Music 対応（ながれ B）** — ながれ B はシステムプレイヤー採用で、ストリーミング曲・DRM 曲を含む全曲を再生可能
+- 📚 **ながれ A：端末ライブラリ連携** — iPhone の「ミュージック」から端末内の曲を複数選択
+- 🔎 **ながれ B：Apple Music カタログ検索（MusicKit）** — カタログ全体を検索し、ライブラリ未追加の曲でもそのまま再生。ストリーミング曲・DRM 曲を含む全曲対応
 - 🔊 **音量バランス調整** — ながれ A はアプリ内スライダーで独立調整（ながれ B は本体音量と連動）
 - 🔁 **独立リピート** — 「一曲リピート / プレイリストリピート / リピートなし」をデッキごとに選択
 - 🌙 **おやすみタイマー** — 15〜90分後に停止（ながれ A はゆっくりフェードアウト）
@@ -34,9 +34,24 @@
 1. `Seseragi.xcodeproj` を Xcode で開く
 2. TARGETS → Seseragi → Signing & Capabilities で自分の Apple ID の Team を選択
 3. 必要なら Bundle Identifier（`com.amacass.seseragi`）を自分のものに変更
-4. iPhone を接続して Run
+4. **App ID で MusicKit を有効化**（ながれ B のカタログ検索に必須。下記参照）
+5. iPhone を接続して Run
 
-初回起動時にミュージックライブラリへのアクセス許可を求められます。
+初回起動時にミュージックライブラリ／Apple Music へのアクセス許可を求められます。
+
+### MusicKit の有効化（ながれ B に必須）
+
+ながれ B の Apple Music カタログ検索は MusicKit を使うため、
+**Apple Developer ポータルでこのアプリの App ID に MusicKit を有効化**する必要があります。
+
+1. [developer.apple.com](https://developer.apple.com/account) → Certificates, IDs & Profiles → **Identifiers**
+2. 本アプリの App ID を開き、**App Services** の **MusicKit** にチェックして保存
+3. Xcode で再ビルド（プロビジョニングは自動更新）
+
+> ⚠️ MusicKit の利用には **有料の Apple Developer Program 加入** が必要です
+> （無料の個人開発アカウントでは MusicKit を有効化できません）。
+> また、ストリーミング再生には端末で **Apple Music のサブスクリプション**が有効であることが必要です。
+> ながれ A（端末ライブラリ再生）だけなら MusicKit は不要で、無料アカウントでも動きます。
 
 ## 2つのデッキの違い（ハイブリッド構成）
 
@@ -45,7 +60,9 @@ DRM 曲を再生できるシステムプレイヤーは1アプリ1系統しか�
 
 | | ながれ A（ライブラリ） | ながれ B（ミュージック） |
 |---|---|---|
+| 選曲 | 端末ライブラリから選ぶ | **カタログ全体を検索** |
 | Apple Music・DRM 曲 | ❌ | ✅ すべて再生可能 |
+| ライブラリ未追加の曲 | ❌ | ✅（検索して直接再生） |
 | アプリ内の独立音量スライダー | ✅ | ❌（本体音量と連動） |
 | おやすみタイマーのフェード | ✅ | ❌（停止のみ） |
 
@@ -55,7 +72,8 @@ Apple Music のピアノを ながれ B に。全体の音量は本体ボタン�
 
 **ながれ A で「再生できない曲」と出る場合**: iCloud ミュージックライブラリ経由で
 実体ファイルが端末にないことがほとんどです。ミュージックアプリで該当曲を
-「ダウンロード」すると再生できるようになります（または ながれ B を使ってください）。
+「ダウンロード」すると再生できるようになります。または **ながれ B のカタログ検索**で
+同じ曲を探して流せば、ダウンロード不要で再生できます。
 詳細は [docs/SPEC.md](docs/SPEC.md) を参照してください。
 
 ## ドキュメント
@@ -75,7 +93,7 @@ seseragi/
 └── Seseragi/                # ソースコード
     ├── SeseragiApp.swift    # エントリポイント
     ├── Info.plist
-    ├── Models/              # RepeatMode などのモデル
+    ├── Models/              # RepeatMode / CatalogTrack などのモデル
     ├── Playback/            # 再生エンジン（DeckControlling / DeckPlayer / MusicDeckPlayer / PlaybackHub / SleepTimer）
-    └── Views/               # SwiftUI ビュー
+    └── Views/               # SwiftUI ビュー（ContentView / DeckView / MediaPickerView / MusicSearchView / WaterBackground）
 ```

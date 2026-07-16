@@ -10,6 +10,10 @@ struct ContentView: View {
     @StateObject private var sleepTimer: SleepTimer
 
     @State private var authStatus = MPMediaLibrary.authorizationStatus()
+    /// ながれ A: 端末内ライブラリのピッカー
+    @State private var showLibraryPicker = false
+    /// ながれ B: Apple Music カタログ検索
+    @State private var showMusicSearch = false
 
     init() {
         let a = DeckPlayer(label: "ながれ A", tint: Color(red: 0.45, green: 0.85, blue: 0.95))
@@ -29,8 +33,8 @@ struct ContentView: View {
                 header
 
                 if authStatus == .authorized {
-                    DeckView(deck: deckA)
-                    DeckView(deck: deckB)
+                    DeckView(deck: deckA) { showLibraryPicker = true }
+                    DeckView(deck: deckB) { showMusicSearch = true }
                     Spacer(minLength: 0)
                     bottomBar
                 } else {
@@ -44,6 +48,20 @@ struct ContentView: View {
             .padding(.bottom, 12)
         }
         .preferredColorScheme(.dark)
+        .sheet(isPresented: $showLibraryPicker) {
+            MediaPickerView(
+                prompt: "「ながれ A」で流す曲を選ぶ",
+                showsCloudItems: deckA.allowsCloudItems
+            ) { items in
+                deckA.load(items)
+            }
+            .ignoresSafeArea()
+        }
+        .sheet(isPresented: $showMusicSearch) {
+            MusicSearchView(tint: deckB.tint) { tracks in
+                deckB.loadCatalog(tracks)
+            }
+        }
         .onAppear {
             // ハブが管理するのは AVAudioPlayer 系のデッキのみ。
             // ながれ B（システムプレイヤー）は Music アプリ自身が
