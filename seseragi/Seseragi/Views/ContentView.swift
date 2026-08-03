@@ -27,7 +27,8 @@ struct ContentView: View {
 
     var body: some View {
         ZStack {
-            WaterBackground()
+            // 選曲シートの表示中は波のアニメーションを止めて描画負荷を下げる
+            WaterBackground(paused: showLibraryPicker || showMusicSearch)
 
             VStack(spacing: 16) {
                 header
@@ -58,8 +59,8 @@ struct ContentView: View {
             .ignoresSafeArea()
         }
         .sheet(isPresented: $showMusicSearch) {
-            MusicSearchView(tint: deckB.tint) { tracks in
-                deckB.loadCatalog(tracks)
+            MusicSearchView(tint: deckB.tint) { songs in
+                deckB.load(songs)
             }
         }
         .onAppear {
@@ -152,7 +153,10 @@ struct ContentView: View {
             }
         }
         .padding(24)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .background(
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .fill(Color(red: 0.03, green: 0.11, blue: 0.15).opacity(0.75))
+        )
         .foregroundStyle(.white)
     }
 

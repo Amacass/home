@@ -1,28 +1,35 @@
-import MediaPlayer
+import Combine
+import Foundation
+import MusicKit
 import SwiftUI
 import UIKit
 
-/// システムのミュージックプレイヤー（Music アプリのエンジン）を使うデッキ。
-/// Apple Music カタログ検索で選んだ曲を、ストアID経由で再生する。
-/// ストリーミング曲・DRM 保護曲を含むすべての曲に対応する。
+/// MusicKit の SystemMusicPlayer（Music アプリのエンジン）を使うデッキ。
+/// Apple Music カタログの曲もライブラリの曲（プレイリスト・アーティスト経由を含む）も、
+/// Song をそのまま渡すだけで再生できる。ストリーミング曲・DRM 保護曲対応。
 ///
 /// 制約:
 /// - iOS の仕様によりアプリ内の独立音量調整は不可（iPhone 本体の音量と連動）
 /// - 再生キューは Music アプリと共有される（Music アプリ側にも再生状態が表示される）
 ///
-/// systemMusicPlayer を採用する理由: applicationMusicPlayer / applicationQueuePlayer は
+/// SystemMusicPlayer を採用する理由: ApplicationMusicPlayer は
 /// アプリがバックグラウンドに移ると再生が止まるため、就寝用途に耐えない。
 @MainActor
 final class MusicDeckPlayer: ObservableObject, DeckControlling {
 
     let label: String
-    let subtitle = "Apple Music対応・音量は本体と連動"
-    let selectionPrompt = "Apple Music を検索"
+    let subtitle = "Apple Music・ライブラリ対応 / 音量は本体と連動"
+    let selectionPrompt = "Apple Music から選ぶ"
     let tint: Color
 
+    @Published private(set) var songs: [Song] = []
     @Published private(set) var isPlaying = false
-    @Published private(set) var nowPlayingItem: MPMediaItem?
     @Published private(set) var currentTime: TimeInterval = 0
+    @Published private(set) var currentTitle: String?
+    @Published private(set) var currentArtist: String?
+    @Published private(set) var artworkImage: UIImage?
+    @Published private(set) var duration: TimeInterval = 0
+    @Published private(set) var positionText = ""
     @Published var repeatMode: RepeatMode = .playlist {
         didSet { applyRepeatMode() }
     }
@@ -31,110 +38,65 @@ final class MusicDeckPlayer: ObservableObject, DeckControlling {
     let supportsVolume = false
     var volume: Double = 1.0 // 未使用（プロトコル要件）
 
-    private let player = MPMusicPlayerController.systemMusicPlayer
+    private let player = SystemMusicPlayer.shared
     private var progressTimer: Timer?
-    private var observers: [NSObjectProtocol] = []
+    private var cancellables: Set<AnyCancellable> = []
 
-    /// 現在のキューの曲数（表示用）
-    private var queueCount = 0
-    /// ストアID → 表示情報。nowPlayingItem のメタデータが揃うまでのフォールバックに使う
-    private var catalogDisplay: [String: CatalogTrack] = [:]
-    /// 再生開始直後、nowPlayingItem がまだ無いときに見せる先頭曲
-    private var firstFallback: CatalogTrack?
+    /// アートワークの再取得を防ぐキャッシュ（URL キー）
+    private static let artworkCache = NSCache<NSURL, UIImage>()
+    private var artworkTask: Task<Void, Never>?
+    private var currentArtworkURL: URL?
 
     init(label: String, tint: Color) {
         self.label = label
         self.tint = tint
 
-        player.beginGeneratingPlaybackNotifications()
-        let center = NotificationCenter.default
-        observers.append(center.addObserver(
-            forName: .MPMusicPlayerControllerPlaybackStateDidChange,
-            object: player,
-            queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor in self?.syncState() }
-        })
-        observers.append(center.addObserver(
-            forName: .MPMusicPlayerControllerNowPlayingItemDidChange,
-            object: player,
-            queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor in self?.syncState() }
-        })
+        // MusicKit プレイヤーの状態変化（再生/停止・曲替わり）を監視する
+        player.state.objectWillChange
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] in
+                Task { @MainActor in self?.syncState() }
+            }
+            .store(in: &cancellables)
+        player.queue.objectWillChange
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] in
+                Task { @MainActor in self?.syncState() }
+            }
+            .store(in: &cancellables)
     }
 
     // MARK: - DeckControlling
 
-    var hasQueue: Bool { queueCount > 0 || nowPlayingItem != nil }
+    var hasQueue: Bool { !songs.isEmpty }
 
-    var positionText: String {
-        guard queueCount > 0 else { return "" }
-        let index = player.indexOfNowPlayingItem
-        guard index != NSNotFound, index < queueCount else {
-            return "\(queueCount) 曲"
-        }
-        return "\(index + 1) / \(queueCount) 曲"
-    }
-
-    var currentTitle: String? {
-        if let title = nowPlayingItem?.title, !title.isEmpty { return title }
-        return currentFallback?.title
-    }
-
-    var currentArtist: String? {
-        if let artist = nowPlayingItem?.artist, !artist.isEmpty { return artist }
-        return currentFallback?.artist
-    }
-
-    var artworkImage: UIImage? {
-        nowPlayingItem?.artwork?.image(at: CGSize(width: 112, height: 112))
-    }
-
-    var duration: TimeInterval {
-        nowPlayingItem?.playbackDuration ?? 0
-    }
-
-    /// 表示のフォールバック元。再生中の曲のストアIDに対応する検索結果、
-    /// なければ先頭曲。
-    private var currentFallback: CatalogTrack? {
-        if let id = nowPlayingItem?.playbackStoreID, let track = catalogDisplay[id] {
-            return track
-        }
-        return firstFallback
-    }
-
-    /// カタログ検索で選んだ曲をキューにして再生を始める。
-    func loadCatalog(_ tracks: [CatalogTrack]) {
-        guard !tracks.isEmpty else { return }
-        catalogDisplay = Dictionary(tracks.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-        firstFallback = tracks.first
-        queueCount = tracks.count
-
-        let ids = tracks.map(\.id)
-        player.setQueue(with: MPMusicPlayerStoreQueueDescriptor(storeIDs: ids))
-        applyRepeatMode()
-
-        // setQueue 直後の play() は失敗することがあるため、準備完了を待ってから再生する
-        player.prepareToPlay { [weak self] error in
-            Task { @MainActor in
-                guard let self else { return }
-                if let error {
-                    self.errorMessage = "再生を開始できませんでした: \(error.localizedDescription)\n\nApple Music のサブスクリプションが有効か、通信状況（ストリーミング可否）を確認してください。"
-                }
-                self.player.play()
-                self.syncState()
+    /// 選んだ曲（カタログ・ライブラリ混在可）をキューにして再生を始める。
+    func load(_ picked: [Song]) {
+        guard !picked.isEmpty else { return }
+        songs = picked
+        player.queue = SystemMusicPlayer.Queue(for: picked)
+        Task {
+            do {
+                try await player.play()
+                applyRepeatMode()
+            } catch {
+                errorMessage = "再生を開始できませんでした: \(error.localizedDescription)\n\nApple Music のサブスクリプションが有効か、通信状況を確認してください。"
             }
+            syncState()
         }
     }
 
     func play() {
         guard hasQueue else { return }
-        player.play()
+        Task {
+            try? await player.play()
+            syncState()
+        }
     }
 
     func pause() {
         player.pause()
+        syncState()
     }
 
     func toggle() {
@@ -142,15 +104,22 @@ final class MusicDeckPlayer: ObservableObject, DeckControlling {
     }
 
     func next() {
-        player.skipToNextItem()
+        Task {
+            try? await player.skipToNextEntry()
+            syncState()
+        }
     }
 
     func previous() {
         // 3秒以上再生していたら曲頭に戻る（一般的なプレイヤーの挙動）
-        if player.currentPlaybackTime > 3 {
-            player.skipToBeginning()
-        } else {
-            player.skipToPreviousItem()
+        if player.playbackTime > 3 {
+            player.playbackTime = 0
+            syncProgress()
+            return
+        }
+        Task {
+            try? await player.skipToPreviousEntry()
+            syncState()
         }
     }
 
@@ -163,20 +132,81 @@ final class MusicDeckPlayer: ObservableObject, DeckControlling {
 
     private func applyRepeatMode() {
         switch repeatMode {
-        case .playlist: player.repeatMode = .all
-        case .single: player.repeatMode = .one
-        case .off: player.repeatMode = .none
+        case .playlist: player.state.repeatMode = .all
+        case .single: player.state.repeatMode = .one
+        case .off: player.state.repeatMode = MusicPlayer.RepeatMode.none
         }
     }
 
     private func syncState() {
-        isPlaying = (player.playbackState == .playing)
-        nowPlayingItem = player.nowPlayingItem
+        isPlaying = (player.state.playbackStatus == .playing)
+
+        if let entry = player.queue.currentEntry {
+            currentTitle = entry.title.isEmpty ? nil : entry.title
+            currentArtist = entry.subtitle
+            if case let .song(song)? = entry.item {
+                duration = song.duration ?? 0
+                if currentArtist == nil || currentArtist?.isEmpty == true {
+                    currentArtist = song.artistName
+                }
+            } else {
+                duration = 0
+            }
+            updatePositionText(for: entry)
+            loadArtwork(entry.artwork)
+        } else {
+            currentTitle = nil
+            currentArtist = nil
+            duration = 0
+            positionText = songs.isEmpty ? "" : "\(songs.count) 曲"
+            artworkImage = nil
+            currentArtworkURL = nil
+        }
+
         syncProgress()
         if isPlaying {
             startProgressTimer()
         } else {
             stopProgressTimer()
+        }
+    }
+
+    private func updatePositionText(for entry: MusicPlayer.Queue.Entry) {
+        let entries = player.queue.entries
+        var position: Int?
+        for (index, candidate) in entries.enumerated() where candidate.id == entry.id {
+            position = index + 1
+            break
+        }
+        if let position {
+            positionText = "\(position) / \(entries.count) 曲"
+        } else {
+            positionText = "\(entries.count) 曲"
+        }
+    }
+
+    private func loadArtwork(_ artwork: Artwork?) {
+        guard let url = artwork?.url(width: 120, height: 120) else {
+            artworkImage = nil
+            currentArtworkURL = nil
+            return
+        }
+        guard url != currentArtworkURL else { return }
+        currentArtworkURL = url
+
+        if let cached = Self.artworkCache.object(forKey: url as NSURL) {
+            artworkImage = cached
+            return
+        }
+        artworkTask?.cancel()
+        artworkTask = Task { [weak self] in
+            guard let (data, _) = try? await URLSession.shared.data(from: url),
+                  let image = UIImage(data: data) else { return }
+            Self.artworkCache.setObject(image, forKey: url as NSURL)
+            await MainActor.run {
+                guard let self, self.currentArtworkURL == url else { return }
+                self.artworkImage = image
+            }
         }
     }
 
@@ -195,7 +225,7 @@ final class MusicDeckPlayer: ObservableObject, DeckControlling {
     }
 
     private func syncProgress() {
-        let time = player.currentPlaybackTime
+        let time = player.playbackTime
         currentTime = time.isFinite && time >= 0 ? time : 0
     }
 }

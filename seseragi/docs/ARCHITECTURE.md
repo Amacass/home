@@ -122,25 +122,37 @@ off      → 次の曲へ（最後の曲なら停止）
 除外・スキップ件数は `skippedCount` に記録し、UI がアラートで
 「ミュージックアプリでのダウンロード」または「ながれ B の利用」を案内する。
 
-### MusicSearchView / MusicDeckPlayer（ながれ B）
+### MusicSearchView / MusicBrowseViews（ながれ B の選曲）
 
-**選曲（MusicSearchView）**
 - `MusicAuthorization.request()` で Apple Music アクセスを要求（未許可なら設定導線）。
-- `.searchable` の入力を `.task(id:)` で監視し、約300ms デバウンス後に
-  `MusicCatalogSearchRequest(term:types:[Song.self])` を実行（`limit = 25`）。
-- 結果の `Song` から `CatalogTrack(id: song.id.rawValue, ...)` を作り、複数選択の順序を保持。
-- 「決定」で選択曲を `onDone([CatalogTrack])` として返す。
+- **ライブラリタブ**: `MusicLibraryRequest<Playlist/Artist/Album/Song>` で自分のライブラリを閲覧。
+  プレイリスト/アルバムは `.with([.tracks])`、ライブラリのアーティストは
+  `MusicLibraryRequest<Song>` を `artistName` でフィルタして曲一覧へ。
+- **検索タブ**: `.searchable` の入力を `.task(id:)` で約350ms デバウンスし、
+  `MusicCatalogSearchRequest(term:types:[Song, Playlist, Album, Artist])`（`limit = 8`）。
+  カタログのアーティストは `.with([.topSongs])` で人気曲を出す。
+- ナビゲーションは `BrowseTarget`（Hashable enum）+ `navigationDestination` に集約。
+  選択状態は `SongSelection`（EnvironmentObject）が保持し、順序を保って
+  `onDone([Song])` で返す。曲単位の選択とコンテナ単位の「すべて追加」に対応。
 
-**再生（MusicDeckPlayer）**
-- `MPMusicPlayerStoreQueueDescriptor(storeIDs:)` にストアIDを渡してキュー化。
-  カタログIDベースなので、ライブラリ未追加のストリーミング曲もそのまま再生できる。
-- `setQueue` 直後の `play()` は失敗することがあるため、
-  `prepareToPlay(completionHandler:)` の完了を待ってから再生。エラーは `errorMessage` へ。
-- 曲名・アーティストは `nowPlayingItem` を優先し、解決前は `CatalogTrack` の情報を
-  フォールバック表示（`catalogDisplay` 辞書を `playbackStoreID` で引く）。
-- リピートは `MPMusicRepeatMode`（.all / .one / .none）に 1:1 でマップ。
-- 状態同期は `playbackStateDidChange` / `nowPlayingItemDidChange` 通知 + 0.5 秒の進行タイマー。
+### MusicDeckPlayer（ながれ B の再生）
+
+- MusicKit の **`SystemMusicPlayer.shared`** を採用。`Queue(for: [Song])` に
+  Song をそのまま渡すだけで、カタログ曲もライブラリ曲も再生できる
+  （ストアID変換が不要になり、ライブラリ項目の再生失敗も防げる）。
+- 状態は `player.state.objectWillChange` / `player.queue.objectWillChange` を購読して同期。
+  再生位置のみ 0.5 秒タイマーでポーリング。
+- 曲名・アーティスト・アートワークは `queue.currentEntry` から取得。
+  アートワークは URL を `NSCache` でキャッシュして再取得を防ぐ。
+- リピートは `MusicPlayer.RepeatMode`（.all / .one / .none）に 1:1 でマップ。
 - 音量・フェードは iOS の制約で操作不可（`setFade` は no-op）。
+
+### 描画パフォーマンス
+
+- 波背景は `TimelineView(.animation(minimumInterval: 1/8, paused:))` の 8fps 更新。
+  選曲シート表示中は `paused` で完全停止する。
+- デッキカードは Material（すりガラス）ではなく半透明の単色塗りを使う。
+  Material は動く背景の上ではブラーを毎フレーム再計算するため、GPU 負荷が大きい。
 
 ## 4. オーディオセッションとシステム連携（PlaybackHub）
 

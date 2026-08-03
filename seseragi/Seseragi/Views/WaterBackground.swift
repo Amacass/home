@@ -2,7 +2,11 @@ import SwiftUI
 
 /// 清流をイメージした背景。
 /// 深い青緑のグラデーションの上を、半透明の波が静かに流れる。
+/// 描画負荷を抑えるため低フレームレート（8fps）で更新し、
+/// シート表示中などは `paused` で完全に停止できる。
 struct WaterBackground: View {
+
+    var paused = false
 
     var body: some View {
         ZStack {
@@ -16,7 +20,7 @@ struct WaterBackground: View {
                 endPoint: .bottom
             )
 
-            TimelineView(.animation(minimumInterval: 1.0 / 20.0)) { timeline in
+            TimelineView(.animation(minimumInterval: 1.0 / 8.0, paused: paused)) { timeline in
                 Canvas { context, size in
                     let time = timeline.date.timeIntervalSinceReferenceDate
                     drawWave(in: &context, size: size, time: time,
@@ -30,6 +34,7 @@ struct WaterBackground: View {
                              baseline: 0.80, opacity: 0.07)
                 }
             }
+            .allowsHitTesting(false)
         }
         .ignoresSafeArea()
     }
@@ -43,7 +48,7 @@ struct WaterBackground: View {
 
         var path = Path()
         path.move(to: CGPoint(x: 0, y: baseY))
-        let step: CGFloat = 6
+        let step: CGFloat = 12
         var x: CGFloat = 0
         while x <= size.width + step {
             let y = baseY + amplitude * sin((x / size.width) * wavelength * 2 * .pi + phase)

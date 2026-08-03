@@ -23,7 +23,12 @@ struct DeckView<Deck: DeckControlling>: View {
             volumeArea
         }
         .padding(18)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+        // すりガラス（Material）は動く背景の上ではブラーを毎フレーム再計算して
+        // 重いため、半透明の塗りで水の透明感を出す
+        .background(
+            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                .fill(Color(red: 0.03, green: 0.11, blue: 0.15).opacity(0.75))
+        )
         .overlay(
             RoundedRectangle(cornerRadius: 28, style: .continuous)
                 .strokeBorder(deck.tint.opacity(0.35), lineWidth: 1)
